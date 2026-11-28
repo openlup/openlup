@@ -1,9 +1,11 @@
-import type { Operation, ActionInput } from '../shared/api.ts';
+import type { Operation, ActionInput, ActionResult } from '../shared/api.ts';
 import type { PageContext } from './context.ts';
 import type { CopyKey } from '../owned/copy.ts';
+import { storefrontAnchor } from '@openlup/platform/storefront';
 import { act, uncertainAction } from './api.ts';
 import { append, button, el, renderValue } from './dom.ts';
 import { limitFor, nativeLimits, operationLimits, otherLimits } from '../shared/limits.ts';
+import { sandboxOutcomeAttribute } from '../shared/storefront-bindings.ts';
 
 export interface FieldSpec {
   name: string;
@@ -17,21 +19,51 @@ export interface FieldSpec {
   pattern?: string;
   options?: Array<{ value: string; text: string }>;
   autocomplete?: string;
+  /** A `storefrontAnchor.field` value, rendered as `data-openlup-field` on the control. */
+  anchor?: FieldAnchor;
 }
 
-export interface ActionFormOptions {
-  operation: Operation;
+/** A buyer-detail field anchor. */
+export type FieldAnchor = (typeof storefrontAnchor.field)[keyof typeof storefrontAnchor.field];
+/** A buyer action anchor. */
+export type ActionAnchor = (typeof storefrontAnchor.action)[keyof typeof storefrontAnchor.action];
+
+interface ActionFormBase {
   title?: CopyKey;
   submit: CopyKey | { label: string };
   fields?: FieldSpec[];
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
   prepare?: (values: ActionInput) => Promise<ActionInput | null>;
+  onRefusal?: (code: string) => void;
   onSuccess?: (value: unknown) => void;
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
   resultMessage?: (value: unknown) => CopyKey | undefined;
+  /** A `storefrontAnchor.action` value, rendered as `data-openlup-action` on the submit button. */
+  submitAnchor?: ActionAnchor;
+  /** A sandbox simulate button's outcome, rendered as `data-starter-sandbox-outcome` on the submit button. */
+  sandboxOutcome?: 'captured' | 'refused' | 'expired' | 'indeterminate';
 }
+
+/**
+ * The page sends the command itself, for example through a purchase-continuation controller, and owns its key.
+ * `reviewed` is the JSON of the form's values without `locale`; `body` is what `prepare` returned. It resolves to
+ * the answer the command applied, to the uncertain answer when none arrived, or to `null` when nothing was sent.
+ */
+export type FormSend = (input: { reviewed: string; body: ActionInput }) => Promise<ActionResult | null>;
+
+/**
+ * With `operation`, the form sends the action under a key it keeps, and a reset button starts a new one. With `send`,
+ * the page sends it: the form keeps no key and renders no reset button, and `answerView` may supply the output to
+ * show for each result instead of the default.
+ */
+export type ActionFormOptions = ActionFormBase & ({ operation: Operation; send?: undefined; answerView?: undefined } | {
+  operation?: undefined;
+  send: FormSend;
+  /** Called only while the form's view is current; `null` shows nothing, `undefined` the default. */
+  answerView?: (result: ActionResult | null) => HTMLElement | null | undefined;
+});
 
 let fieldCounter = 0;
 
@@ -54,6 +86,7 @@ export function field(context: PageContext, spec: FieldSpec): {
     control = el('input', { ...attrs, type: spec.type ?? 'text', value: spec.value ?? '',
       pattern: spec.pattern, min: spec.min, max: spec.max, step: spec.type === 'number' ? 1 : undefined });
   }
+  if (spec.anchor) control.setAttribute(storefrontAnchor.attribute.field, spec.anchor);
   const wrapper = el('div', { class: spec.type === 'checkbox' ? 'field checkbox-field' : 'field' });
   const label = el('label', { for: id }, context.t(spec.label));
   if (spec.type === 'checkbox') append(wrapper, control, label);
@@ -72,6 +105,8 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     append(form, item.wrapper);
   }
   const submit = el('button', { type: 'submit' }, typeof options.submit === 'string' ? context.t(options.submit) : options.submit.label);
+  if (options.submitAnchor) submit.setAttribute(storefrontAnchor.attribute.action, options.submitAnchor);
+  if (options.sandboxOutcome) submit.setAttribute(sandboxOutcomeAttribute, options.sandboxOutcome);
   // Keep command identity on an uncertain transport result. A changed input is a new command.
   let commandKey = crypto.randomUUID();
   let priorInput: string | null = null;
@@ -80,7 +115,8 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   let generation = 0;
   form.addEventListener('input', () => { ++generation; });
   form.addEventListener('change', () => { ++generation; });
-  const reset = button(context.t('newAction'), () => {
+  const send = options.send;
+  const reset = send ? undefined : button(context.t('newAction'), () => {
     if (inFlight) return;
     ++generation;
     commandKey = crypto.randomUUID();
@@ -88,11 +124,12 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     uncertain = undefined;
     output.replaceChildren();
   }, 'secondary');
-  append(form, el('p', { class: 'muted small' }, context.t('idempotency')),
+  const busy = (value: boolean) => { inFlight = value; submit.disabled = value; if (reset) reset.disabled = value; };
+  append(form, send ? null : el('p', { class: 'muted small' }, context.t('idempotency')),
     el('div', { class: 'actions' }, submit, reset), output);
   form.addEventListener('submit', event => {
     event.preventDefault();
-    if (inFlight || !form.isConnected || !form.reportValidity()) return;
+    if (inFlight || submit.disabled || submit.getAttribute('aria-disabled') === 'true' || !form.isConnected || !form.reportValidity()) return;
     const requestGeneration = ++generation;
     const current = () => form.isConnected && generation === requestGeneration;
     void (async () => {
@@ -110,44 +147,50 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         return;
       }
       const input = JSON.stringify(values);
+      const { locale: _locale, ...reviewed } = values;
       if (uncertain?.input === input) values = uncertain.prepared;
       else if (options.prepare) {
-        uncertain = undefined;
-        inFlight = true; submit.disabled = true; reset.disabled = true;
+        busy(true);
         try {
           const prepared = await options.prepare(values);
           if (!current() || !prepared) return;
           values = prepared;
-        } finally { inFlight = false; submit.disabled = false; reset.disabled = false; }
+        } finally { busy(false); }
       }
       if (!current()) return;
-      const serialized = JSON.stringify(values);
-      if (priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
-      priorInput = serialized;
-      inFlight = true;
-      submit.disabled = true;
-      reset.disabled = true;
+      // A changed input is a new command. What prepare adds, such as a refreshed reviewed total, is not.
+      if (!send && priorInput !== null && priorInput !== input) commandKey = crypto.randomUUID();
+      priorInput = input;
+      busy(true);
       form.setAttribute('aria-busy', 'true');
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
-        const result = await act(options.operation, values, commandKey);
-        if (!current()) return;
+        const result = send ? await send({ reviewed: JSON.stringify(reviewed), body: values })
+          : await act(options.operation, values, commandKey);
+        if (result === null) {
+          if (current()) output.replaceChildren(...[options.answerView?.(null) ?? []].flat());
+          return;
+        }
         uncertain = uncertainAction(result)
           ? { input, prepared: values } : undefined;
-        output.replaceChildren(result.ok
+        // Every definite refusal of the command, or of its automatic repeat, runs the refusal hook.
+        if (!result.ok && !uncertain) options.onRefusal?.(result.code);
+        if (!current()) return;
+        const custom = options.answerView?.(result);
+        if (custom === null) { output.replaceChildren(); return; }
+        const limit = options.operation === undefined ? undefined : operationLimits[options.operation];
+        output.replaceChildren(custom ?? (result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),
             options.resultMessage?.(result.value) ? el('p', {}, context.t(options.resultMessage(result.value)!)) : null,
             renderValue(options.display ? options.display(result.value) : result.value))
-          : refusal(context, result.code, operationLimits[options.operation]?.code === result.code ? operationLimits[options.operation]!.explanation[context.locale] : undefined));
+          : refusal(context, result.code, limit?.code === result.code ? limit.explanation[context.locale] : undefined)));
         if (!result.ok && result.issues?.length) append(output, renderValue(result.issues));
         if (result.ok) {
           for (const { spec, control } of controls) if (spec.type === 'password') control.value = '';
           options.onSuccess?.(result.value);
         } else options.onFailure?.(result.code);
       } finally {
-        inFlight = false;
-        submit.disabled = false;
-        reset.disabled = false;
+        busy(false);
         form.removeAttribute('aria-busy');
       }
     })();

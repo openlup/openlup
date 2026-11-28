@@ -19,6 +19,8 @@ type ProviderIntent = Awaited<ReturnType<StripePaymentAdapterConfig["client"]["r
 const AT = "2026-09-01T12:00:00.000Z", firstDue = "2026-09-29T12:01:00.000Z", secondDue = "2026-10-27T12:01:00.000Z";
 const truth = { dunningTemplateSlug: "dunning", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" };
 const secret = "synthetic-signature", clientId = randomUUID(), principal = randomUUID(), sku = randomUUID(), source = `stock:${randomUUID()}`;
+const ownAccountRef = "acct_own_fixture";
+const captureScope = "public.payment_capture_time_test_qualification";
 let env: LifecycleInstallation, orderId: string, intentId: string, subscriptionId: string, time = AT;
 let currentMethod = "pm_primary", declined = false, remote: ProviderIntent;
 const fake = createScriptedPaymentFake<{ create: ProviderIntent; read: ProviderIntent; setup: ProviderIntent; customer: string }>();
@@ -55,6 +57,7 @@ beforeAll(async () => {
     address: { recipientName: "Synthetic recipient", line1: "Synthetic street 1", city: "Example", postalCode: "00000", country: "ZZ" }, now: AT });
   await call(env.runtime, "subscription_declare_provisional_activation", [`declare:${orderId}`, orderId, 28, AT]);
   const adapter = createStripePaymentAdapter({ client: {
+    ownAccountRef,
     async createPaymentIntent(input, options) {
       requests.push({ ...input, key: options.idempotencyKey });
       // Independent owner connection observes committed prepare at dispatch.
@@ -79,11 +82,41 @@ beforeAll(async () => {
     settlement: db => createPostgresRenewalSettlementPort(db, codec, transaction), search: async () => [] });
 }, postgresSetupTimeoutMs);
 afterAll(async () => { await env?.close(); }, postgresTeardownTimeoutMs);
-function signed(type: string, object: Record<string, unknown>, id = `evt_${randomUUID()}`, created: number | null = Math.floor(Date.parse(time) / 1000)) {
-  const rawBody = Buffer.from(JSON.stringify({ id, type, livemode: false, ...(created === null ? {} : { created }), data: { object } }));
+function signed(type: string, object: Record<string, unknown>, id = `evt_${randomUUID()}`,
+  created: number | null = Math.floor(Date.parse(time) / 1000), account?: string | null) {
+  const rawBody = Buffer.from(JSON.stringify({ id, type, livemode: false, account, ...(created === null ? {} : { created }), data: { object } }));
   const stamp = Math.floor(Date.parse(time) / 1000), digest = createHmac("sha256", secret).update(`${stamp}.${rawBody.toString()}`).digest("hex");
   return { rawBody, headers: { "stripe-signature": `t=${stamp},v1=${digest}` }, receivedAt: time };
 }
+
+it("admits a verified own-account capture and holds a foreign connected-account capture", async () => {
+  await env.migration.query(`INSERT INTO ${captureScope} VALUES (true,now(),$1,'signed_webhook',$2)`, [rail.provider, ownAccountRef]);
+  try {
+    for (const account of [null, "acct_foreign_fixture"]) {
+      const order = randomUUID(), remoteRef = `pi_account_${randomUUID()}`;
+      await env.owner.query(`WITH created AS (
+        INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor)
+        VALUES($1,$2,'pending_payment','XXX',200) RETURNING id)
+        INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+        SELECT id,$3,1,1,200,200 FROM created`, [order, clientId, sku]);
+      const { id: intent } = await rail.control.createIntent({ idempotencyKey: `account-intent:${order}`, targetKind: "one_time_order", orderId: order,
+        amountMinor: 200, currency: "XXX", channelKey: rail.provider, metadata: {}, at: time });
+      const request = { paymentIntentId: intent, providerIdempotencyKey: `account-provider:${order}`, providerRequestFingerprint: "b".repeat(64) };
+      const { paymentAttemptId } = await rail.control.prepareProviderAttempt({ ...request, idempotencyKey: `account-prepare:${order}`,
+        provider: rail.provider, providerFlow: "one_time_payment", paymentMethodRef: null, requestPayload: {} });
+      await rail.control.finalizeProviderAttempt({ ...request, idempotencyKey: `account-finalize:${order}`, paymentAttemptId,
+        providerAttemptId: remoteRef, providerSessionId: null, attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
+      const capture = signed("payment_intent.succeeded", { ...payment(remoteRef, "succeeded"),
+        amount_received: 200, metadata: { paymentIntentId: intent } }, undefined, undefined, account);
+      expect(await rail.ingress.receive(capture)).toMatchObject({ status: 200 });
+      expect((await env.owner.query(`SELECT i.status, e.payload->>'providerAccountRef' AS account
+        FROM public.commerce_settlement_intents i JOIN public.payment_provider_attempt_evidence e ON e.settlement_intent_id=i.id WHERE i.id=$1`, [intent])).rows)
+        .toEqual([{ status: "settled", account: account ?? ownAccountRef }]);
+      expect((await env.owner.query("SELECT kind, captured_at FROM public.payment_read_capture_time($1,NULL)", [order])).rows)
+        .toEqual([account === null ? { kind: "authoritative", captured_at: new Date(time) } : { kind: "unqualified", captured_at: null }]);
+    }
+  } finally { await env.migration.query(`DELETE FROM ${captureScope}`); }
+});
 
 it("acknowledges a verified capture for an OMS-closed checkout without applying paid or saved-method effects", async () => {
   const order = randomUUID(), methodRef = `review_method_${randomUUID()}`;
@@ -531,7 +564,7 @@ describe("exact local-intent search after uncertain dispatch", () => {
   });
 });
 
-it("keeps native renewal awaiting provider when the provider reports conflicting paid fields", async () => {
+it.each([true, false])("classifies native renewal readback with conflicting paid fields=%s", async conflict => {
   const remoteRef = `provider_${randomUUID()}`;
   const configuredMoney = { amountMinor: 200, currency: "XXX" };
   const adapter = createTpayPaymentAdapter({
@@ -540,7 +573,7 @@ it("keeps native renewal awaiting provider when the provider reports conflicting
       async fetchImpl(url) {
         return { ok: true, status: 200, text: async () => "", json: async () => url.endsWith("/oauth/auth")
           ? { access_token: "fixture", expires_in: 3600 }
-          : { transactionId: remoteRef, status: "correct", amount: "2.00", paidAmount: "3.00", payments: { amountPaid: "2.00" },
+          : { transactionId: remoteRef, status: "correct", amount: "2.00", paidAmount: conflict ? "3.00" : "2.00", payments: { amountPaid: "2.00" },
             currency: "XXX", date: { realization: AT } } };
       } },
     notification: { rootCertificatePem: rootCertificates[0],
@@ -571,7 +604,15 @@ it("keeps native renewal awaiting provider when the provider reports conflicting
     withTransaction: transaction, paymentRail, codec: fixtureCodec, truth, now: () => AT,
     settlement: db => createPostgresRenewalSettlementPort(db, fixtureCodec, transaction), search: async () => [] });
   expect(await binding.rail.readOutcome({ settlementIntentId, orderId, subscriptionId: f.subscription,
-    ...configuredMoney, externalAttemptRef: remoteRef })).toMatchObject({ status: "unknown", disposition: "ambiguous" });
+    ...configuredMoney, externalAttemptRef: remoteRef })).toMatchObject(conflict ? { status: "unknown", disposition: "ambiguous" } : { status: "succeeded" });
+  if (!conflict) {
+    await env.migration.query(`INSERT INTO ${captureScope} VALUES (true,now(),$1,'signed_webhook',$2)`, [rail.provider, ownAccountRef]);
+    try {
+      expect((await env.owner.query("SELECT kind,provider,route,fallback_at FROM public.payment_read_capture_time($1,NULL)", [orderId])).rows)
+        .toEqual([{ kind: "unqualified", provider: paymentRail.provider, route: "reconciliation_read", fallback_at: null }]);
+    } finally { await env.migration.query(`DELETE FROM ${captureScope}`); }
+    return;
+  }
   expect(await paymentRail.readAttempt(settlementIntentId)).toMatchObject({ settlementStatus: "created",
     paymentAttempt: { status: "processing" } });
   expect((await env.owner.query("SELECT count(*)::int AS captures FROM public.payment_truth_events WHERE settlement_intent_id=$1 AND outcome='captured'",

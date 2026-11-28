@@ -73,12 +73,28 @@ export interface TelemetryPort {
     flush(signal?: AbortSignal): Promise<TelemetryFlushResult>;
     shutdown?(signal?: AbortSignal): Promise<void>;
 }
+export interface DeprecationNoticeInput {
+    readonly symbol: string;
+    readonly subpath: string;
+    readonly replacement?: string;
+    readonly removeIn: string;
+}
+export interface DeprecationNoticeEvent {
+    readonly kind: "deprecation";
+    readonly symbol: string;
+    readonly subpath: string;
+    readonly replacement?: string;
+    readonly removeIn: string;
+    readonly message: string;
+    readonly timestamp: string;
+}
 ```
 ## dist/observability/index.d.ts
 
 ```ts
 import { z } from "zod";
 import type { TelemetryAttributes, TelemetryCapabilities, TelemetryEvent, TelemetryFlushResult, TelemetryPort } from "./contracts/index.js";
+import type { DeprecationNoticeEvent, DeprecationNoticeInput } from "./contracts/index.js";
 export type * from "./contracts/index.js";
 export declare const TELEMETRY_CONTRACT_VERSION: "observability.telemetry.v1";
 export declare const telemetryCapabilitiesSchema: z.ZodObject<{
@@ -120,4 +136,12 @@ export declare function createSafeTelemetryPort(input: {
     readonly enabled?: boolean;
     readonly exportBatch: (events: readonly TelemetryEvent[], signal?: AbortSignal) => Promise<TelemetryFlushResult>;
 }): TelemetryPort;
+/**
+ * Once-per-process, fail-open, zero-PII deprecation telemetry emitter.
+ * Deduplicates by `(subpath, symbol, removeIn)` against `registry` (defaults to
+ * a process-wide Set), scrubs all fields, and swallows emitter errors.
+ */
+export declare function emitDeprecationNoticeOnce(notice: DeprecationNoticeInput, emit?: (event: DeprecationNoticeEvent) => void, registry?: Set<string>): boolean;
+/** Resets the process-wide deprecation notice deduplication registry. For tests only. */
+export declare function __resetDeprecationNoticeRegistryForTests(): void;
 ```

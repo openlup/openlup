@@ -10,7 +10,8 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
+import { createAccountMutationsTemplate, installAccountMutations, type AccountMutationsStore } from "./customerAccountMutations.fixture.js";
+import { issue, write } from "./orderMoneyV2Guards.fixture.js";
 import {
   allocations, buckets, calculationKey, capture, checkMessage, digest, expectSqlError, fees, foreignKeyMessage,
   headerFk, insert, itemFk, itemTable, lineKey, orderFk, orderTable, positions, quoteKey, rejected, seedPrivateFacts,
@@ -22,6 +23,12 @@ if (manifest?.schemaVersion !== 3) throw new Error("Complete native catalogue re
 const unit = manifest.forward.find(entry => entry.file.endsWith("_order_money_v2_storage.sql"));
 if (!unit) throw new Error("Order money storage forward missing");
 const position = manifest.qualified.forward.indexOf(manifest.qualified.forward.find(entry => entry.file === unit.file)!);
+const storageBoundary = structuredClone(manifest);
+for (const plan of [storageBoundary, storageBoundary.qualified, storageBoundary.qualifiedAdmin]) {
+  plan.forward = plan.forward.slice(0, plan.forward.findIndex(entry => entry.file === unit.file) + 1);
+}
+storageBoundary.qualified.objectInventorySha256.bootstrapMigrator.withRestore =
+  "4f145336f360df45e2e00cc705582ea4c264f1c4658b8342e94efe2bf04520ab";
 const precedingInventory = "f0fb77762e832f9ef629e5c9e4b87f5a07f6794d391150b739577cb836c93755";
 const functions = [
   "public.commerce_order_assert_line_sum()",
@@ -37,9 +44,8 @@ const definitions = async (pool: Pool) => (await pool.query<{ definition: string
 
 let store: AccountMutationsStore, sku: Awaited<ReturnType<typeof seedSku>>;
 let live: Awaited<ReturnType<typeof seedPrivateFacts>>, erased: typeof live;
-let beforeDefinitions: Awaited<ReturnType<typeof definitions>>;
+let lineSumAfterStorage: string;
 let predecessorOrder: string, predecessorRows: Awaited<ReturnType<typeof priorOrderRows>>;
-let priorSource: ConnectedNativeStoreCapture;
 let applied: string[];
 
 function priorOrderRows() {
@@ -67,23 +73,29 @@ async function nativeDraft(db: Pool) {
 }
 
 beforeAll(async () => {
-  const predecessor = structuredClone(manifest);
+  const predecessor = structuredClone(storageBoundary);
   for (const plan of [predecessor, predecessor.qualified, predecessor.qualifiedAdmin]) {
     const own = plan.forward.findIndex(entry => entry.file === unit.file);
     expect(own).toBeGreaterThan(0);
     plan.forward = plan.forward.slice(0, own);
   }
   predecessor.qualified.objectInventorySha256.bootstrapMigrator.withRestore = precedingInventory;
-  store = await withPlatformCatalog(predecessor, root => installAccountMutations("bootstrap", false, "order-storage-prefix", root));
-  expect(store.inventory).toBe(precedingInventory);
-  sku = await seedSku(store.owner);
-  predecessorOrder = await nativeDraft(store.runtime);
-  predecessorRows = await priorOrderRows();
-  beforeDefinitions = await definitions(store.owner);
-  const sql = "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1";
-  expect((await store.owner.query(sql, [position + 1])).rows).toEqual([]);
-  applied = (await store.runner.apply()).applied;
-  priorSource = priorPacket(await capture(store.owner, store.inventory, "prior-order-store"));
+  await withPlatformCatalog(storageBoundary, async current => {
+    store = await withPlatformCatalog(predecessor, root =>
+      installAccountMutations("bootstrap", false, "order-storage-prefix", root, current));
+    expect(store.inventory).toBe(precedingInventory);
+    sku = await seedSku(store.owner);
+    predecessorOrder = await nativeDraft(store.runtime);
+    predecessorRows = await priorOrderRows();
+    const beforeDefinitions = await definitions(store.owner);
+    const sql = "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1";
+    expect((await store.owner.query(sql, [position + 1])).rows).toEqual([]);
+    applied = (await store.runner.apply()).applied;
+    const afterDefinitions = await definitions(store.owner);
+    expect(afterDefinitions).toHaveLength(functions.length);
+    expect(afterDefinitions).toStrictEqual(beforeDefinitions);
+    lineSumAfterStorage = afterDefinitions[0]!.source;
+  });
   live = await transaction(store.owner, db => seedPrivateFacts(db, sku));
   erased = await transaction(store.owner, db => seedPrivateFacts(db, sku, true));
 }, postgresSetupTimeoutMs);
@@ -94,14 +106,13 @@ const v0Rows = (orderId: string) => store.owner.query(`SELECT o.money_version,i.
   FROM public.commerce_orders o JOIN public.commerce_order_items i ON i.order_id=o.id WHERE o.id=$1`, [orderId]);
 
 it("applies its own prefix, keeps the incumbent definitions, and stores nulls through the native draft writer", async () => {
-  expect(applied.slice(0, 1)).toEqual([unit.file]);
+  expect(applied).toEqual([unit.file]);
+  expect((await store.owner.query("SELECT to_regclass('public.subscription_renewal_upgrade_cohort') AS cohort")).rows)
+    .toEqual([{ cohort: null }]);
   expect((await store.owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations WHERE position=$1",
     [position + 1])).rows).toEqual([{ catalog_path: unit.file, sha256: unit.sha256, position: position + 1 }]);
   expect(createHash("sha256").update(readFileSync(unit.file)).digest("hex")).toBe(unit.sha256);
-  const afterDefinitions = await definitions(store.owner);
-  expect(afterDefinitions).toHaveLength(functions.length);
-  expect(afterDefinitions).toStrictEqual(beforeDefinitions);
-  const body = afterDefinitions[0]!.source;
+  const body = lineSumAfterStorage;
   const legacyBlock = body.slice(body.indexOf("  SELECT total_amount_minor"),
     body.lastIndexOf("\n\n  PERFORM public.catalog_order_line_sum_acceptance(v_order_id);") + 1);
   expect(Buffer.byteLength(legacyBlock)).toBe(939);
@@ -320,24 +331,34 @@ function priorPacket(current: ConnectedNativeStoreCapture): ConnectedNativeStore
     tables: compat.tables.map(row => predecessorRows.tables.find(previous => previous.table === row.table) ?? row) };
   const { sha256: _hash, ...body } = current;
   const prior = { ...body, compatible: { ...earlier, sha256: digest(earlier) },
-    owned: current.owned.filter(row => !storageTables.some(name => name === row.table)) };
+    requiredPrivacyContributorIds: current.requiredPrivacyContributorIds.filter(id => id !== "order-draft-receipts"),
+    owned: current.owned.filter(row => !storageTables.some(name => name === row.table)
+      && row.table !== "commerce_order_draft_receipts_v2" && row.table !== "subscription_renewal_upgrade_cohort") };
   return { ...prior, sha256: digest(prior) };
 }
 
 it("refuses the predecessor packet and restores the current six-table graph with row-text equality and replay", async () => {
-  const target = await installAccountMutations("bootstrap", false, "order-storage-target");
+  const template = await createAccountMutationsTemplate("bootstrap", "order-storage-transfer");
   try {
+    const source = await template.clone("order-storage-source");
+    const target = await template.clone("order-storage-target");
     if (target.installation.generation === "legacy") throw new Error("Qualified owner restore required");
-    // Preserve the incumbent graph in the predecessor packet. Its order and item bytes came from the prior installation.
-    const packet = await capture(store.owner, store.inventory, "current-order-store");
-    expect(packet.owned.filter(row => storageTables.some(name => name === row.table)).map(row => [row.table, row.rows.length]))
-      .toEqual(storageTables.map((name, index) => [name, [2, 2, 4, 4, 6, 2][index]]));
+    // Use accepted facts for the exact-current transfer. The storage-only prefix
+    // continues to exercise the constraints independently of later writers.
+    const variant = await seedSku(source.owner);
+    const evidence = await issue(source, variant, false);
+    const { id } = await transaction(source.owner, db => write(db, evidence, variant));
+    const packet = await capture(source.owner, source.inventory, "current-order-store");
     const taxIndex = packet.owned.findIndex(row => row.table === "tax_calculations");
     expect(packet.owned.slice(taxIndex + 1, taxIndex + 7).map(row => row.table)).toEqual(storageTables);
+    expect(packet.owned.find(row => row.table === snapshots)?.rows.map(row => JSON.parse(row).order_id)).toEqual([id]);
     const freshTarget = await capture(target.migrator, target.inventory, "empty-target");
     const input = { owner: target.migrator, installation: target.installation, freshTarget };
     const remedy = "capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older";
-    const error = await rejected(restoreConnectedNativeStore({ ...input, packet: priorSource }));
+    expect(packet.owned.find(row => row.table === "subscription_renewal_upgrade_cohort")?.rows).toEqual([]);
+    const previous = priorPacket(packet);
+    expect(previous.owned.map(row => row.table)).not.toContain("subscription_renewal_upgrade_cohort");
+    const error = await rejected(restoreConnectedNativeStore({ ...input, packet: previous }));
     expect(Object.getPrototypeOf(error)).toBe(PostgresTransferError.prototype);
     expect(Reflect.ownKeys(error as object).filter(key => key !== "stack").sort())
       .toStrictEqual(["code", "message", "name", "remedy", "table"]);
@@ -349,7 +370,7 @@ it("refuses the predecessor packet and restores the current six-table graph with
     const restored = await capture(target.migrator, target.inventory, "restored-target");
     expect(restored.owned).toStrictEqual(packet.owned);
     expect(restored.compatible.tables).toStrictEqual(packet.compatible.tables);
-  } finally { await target.close(); }
+  } finally { await template.close(); }
 }, postgresSetupTimeoutMs);
 
 it("detects disabled dormancy and orphan constraints with the same failing writes", async () => {

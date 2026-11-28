@@ -38,8 +38,8 @@ export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(ex
 ```
 
 The executor must commit each operation before resolving. Follow
-[installation and transaction ownership](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions)
-and [deliver events with the outbox](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md).
+[installation and transaction ownership](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions)
+and [deliver events with the outbox](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/how-to/build/outbox.md).
 
 ## Sources and declarations
 
@@ -51,8 +51,8 @@ Composition can report `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`, `O
 
 ## Using this package in an application
 
-Read [application ownership](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/start/adopt-from-npm.md#keep-application-ownership)
-and [extension seams](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md).
+Read [application ownership](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/start/adopt-from-npm.md#keep-application-ownership)
+and [extension seams](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md).
 
 Public handlers, policies, ports and compatible adapters need no per-function
 record or upstream release. A missing seam needs a local reproducer and actual
@@ -72,8 +72,8 @@ the exact `@openlup/*` set together.
 The application owns its instructions and execution authority. Inside the
 OpenLup monorepo, root `AGENTS.md` governs.
 
-The implementation seams are `withPayloadSchema`, `composeHandlers` and
-`uniqueRegistry`; `./testing` checks store fencing, without replacing complete
-adapter or absorption proof. Installed bytes under `node_modules/@openlup/**`
-remain the dispatch engine: do not autonomously patch, fork, vendor, monkey-patch,
+Use `withPayloadSchema`, `composeHandlers`, `composeIndependentHandlers` and
+`uniqueRegistry` at the handler boundary. The `./testing` entry checks store
+fencing as part of adapter and absorption proof. Installed bytes under
+`node_modules/@openlup/**` remain the dispatch engine: do not autonomously patch, fork, vendor, monkey-patch,
 shadow resolution or restore a copied engine. Import only declared exports.

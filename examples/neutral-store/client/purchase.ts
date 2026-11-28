@@ -1,5 +1,7 @@
 import { isRecord } from '../shared/offer.ts';
 import { resolveRoute } from '../shared/routes.ts';
+import type { Locale } from '../shared/config.ts';
+import { checkoutContinuationCopy } from '../shared/limits.ts';
 
 interface Purchase { orderRef?: string; token?: string }
 const memory = new Map<string, Purchase>();
@@ -60,4 +62,19 @@ export function visiblePurchase(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const { token: _credential, ...visible } = value;
   return visible;
+}
+
+/** Forget the reload convenience when it is the given order; true when it was. */
+export function forgetPurchase(configuration: string, orderRef: string): boolean {
+  if (currentPurchase(configuration)?.orderRef !== orderRef) return false;
+  memory.delete(configuration);
+  try { sessionStorage.removeItem(key(configuration)); } catch { /* Memory no longer serves it. */ }
+  return true;
+}
+
+export type CheckoutContinuationText = keyof typeof checkoutContinuationCopy;
+
+/** A managed buyer text with its request-limit wait filled in. */
+export function continuationMessage(text: CheckoutContinuationText, locale: Locale, windowMs: number): string {
+  return checkoutContinuationCopy[text][locale].replaceAll('{minutes}', String(Math.ceil(windowMs / 60_000)));
 }

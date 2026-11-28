@@ -12,10 +12,12 @@ export interface PageContext {
   query: URLSearchParams;
   catalogueProducts: readonly StarterCatalogueItem[];
   catalogueError?: string;
+  /** False while the storefront catalogue request is open; absent means validate against the products at hand. */
+  catalogueSettled?: boolean;
   fragments: CustomizationFragments;
   t: (key: CopyKey) => string;
   money: (minor: number) => string;
   getCart: () => Cart;
   setCart: (cart: Cart) => void;
-  navigate: (path: string) => void;
+  navigate: (path: string, options?: { replace?: boolean }) => void;
 }

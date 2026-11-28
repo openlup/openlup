@@ -40,6 +40,7 @@ import {
   consumerNode,
   NON_ADAPTER_ENTRIES,
   OPTIONAL_PEERS,
+  PLATFORM_MIGRATION_CONSUMER_PROOF,
   proveAdapterRefusals,
   proveOidcRefusals,
   provePostgresOperations,
@@ -52,7 +53,7 @@ import {
   proveCatalogConformanceConsumer,
   runPlatformColdConsumer
 } from "./platform-cold-consumer.ts";
-import { proveSelfServiceConsumer, proveSavedAddressFormatsConsumer } from "./platform-cold-consumer.ts";
+import { proveSelfServiceConsumer, proveSavedAddressFormatsConsumer, proveHeavyManagedConsumer } from "./platform-cold-consumer.ts";
 import { ACCOUNT_SUPPORT_COMPOSITION_PROOFS, proveAccountSupportCompositionConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -201,8 +202,8 @@ function fixture() {
   for (const file of ["metadata", "jsonLd", "urls"]) copyFileSync(join(root, `packages/platform/dist/marketing/seo/${file}.d.ts`), join(platformRoot, `seo/${file}.d.ts`));
   mkdirSync(join(platformRoot, "contracts"), { recursive: true });
   copyFileSync(join(root, "packages/platform/dist/marketing/contracts/contactLegal.d.ts"), join(platformRoot, "contracts/contactLegal.d.ts"));
-  packageFixture(consumer, "zod", { ".": "./index.js" });
-  writeFileSync(join(consumer, "node_modules/zod/index.d.ts"), "export namespace z { export interface ZodType<Output, Input = unknown> { parse(input: Input): Output } }\n");
+  // The lifecycle entry is copied from the build and loads zod at runtime, so the consumer gets the real package.
+  cpSync(join(root, "node_modules/zod"), join(consumer, "node_modules/zod"), { recursive: true });
   return consumer;
 }
 
@@ -580,6 +581,27 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
+it("resolves the v2 structural money schemas only through the packed pricing server entry", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as pricing from "@openlup/platform/pricing";
+import * as contracts from "@openlup/platform/pricing/contracts";
+import * as browser from "@openlup/platform/pricing/browser";
+assert.deepEqual(Object.keys(pricing).filter(key => key.startsWith("commerceMoneyV2")).sort(), [
+  "commerceMoneyV2CurrencySchema", "commerceMoneyV2DeliveryBucketSchema", "commerceMoneyV2DigestSchema",
+  "commerceMoneyV2FactsSchema", "commerceMoneyV2FeeLineSchema", "commerceMoneyV2LineSchema",
+  "commerceMoneyV2MinorSchema", "commerceMoneyV2PriceSchema", "commerceMoneyV2PromotionEngineSchema",
+  "commerceMoneyV2ReferenceSchema", "commerceMoneyV2TaxEvidenceShape", "commerceMoneyV2UuidSchema",
+]);
+for (const key of Object.keys(pricing).filter(key => key.startsWith("commerceMoneyV2"))) {
+  assert.equal(key in contracts || key in browser, false);
+}
+assert.equal(pricing.commerceMoneyV2FactsSchema.shape.destination.safeParse({ schemaVersion: 2 }).success, false);
+`);
+});
+
 it("checks the packed inert catalogue skeleton and reports unavailable content evidence", () => {
   proveCatalogConformanceConsumer(pristinePackedA1Fixture());
 });
@@ -873,6 +895,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
   expect(serverExports).toEqual({
     CHECKOUT_RECOVERY_TOKEN_PREFIX: "string",
     CheckoutRecoveryScheduleChangeBlockedError: "function",
+    DEFAULT_COMMERCE_RETURN_REASONS: "object",
     EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: "number",
     ORDER_DRAFT_RPC_NAME: "string",
     ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
@@ -882,6 +905,10 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     describeCommerceMoneyLimitsV2Setting: "function",
     inspectCommerceMoneyLimitsV2: "function",
     installCommerceMoneyLimitsV2: "function",
+    installCommerceReturnReasonsPolicy: "function",
+    readCommerceReturnReasonsOverride: "function",
+    readCommerceReturnReasonsPolicy: "function",
+    validateCommerceReturnReasons: "function",
     installCheckoutRecoveryReminderSchedule: "function",
     readCheckoutRecoveryReminderSchedule: "function",
     readCheckoutRecoveryReminderObservation: "function",
@@ -2048,3 +2075,65 @@ it("skeleton_pack_projects_clean", () => {
   // Prove the application parser uses native, erasable TypeScript imports.
   call(sourceArgs(write("forward.ts", 'export { catalogueConformance } from "./catalogue.ts";')), 0);
 }, 30_000);
+
+it("stages the canonical migration manifest as a consumer file so oversized manifests never hit argv E2BIG", () => {
+  expect(PLATFORM_MIGRATION_CONSUMER_PROOF).toContain('readFileSync(expectedManifestPath, "utf8")');
+  const consumer = mkdtempSync(join(tmpdir(), "openlup-manifest-file-proof-"));
+  const manifestPath = join(consumer, "expected-platform-migration-manifest.json");
+  try {
+    // Exceed Linux MAX_ARG_STRLEN (128 KiB) to prove file-path handoff avoids E2BIG.
+    const oversized = JSON.stringify({ entries: Array.from({ length: 1600 }, (_, i) => ({ file: `m_${i}.sql`, sha256: "a".repeat(64) })) });
+    expect(Buffer.byteLength(oversized, "utf8")).toBeGreaterThan(150 * 1024);
+    writeFileSync(manifestPath, oversized);
+    const out = consumerNode(consumer, `
+      import { readFileSync } from "node:fs";
+      import { argv } from "node:process";
+      const parsed = JSON.parse(readFileSync(argv[2], "utf8"));
+      console.log(JSON.stringify({ count: parsed.entries.length }));
+    `, [manifestPath]);
+    expect(JSON.parse(out)).toEqual({ count: 1600 });
+  } finally {
+    rmSync(consumer, { recursive: true, force: true });
+  }
+});
+
+function heavyManagedConsumerFixture() {
+  const consumer = scratch();
+  writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "heavy-managed-canary", private: true, type: "module" }));
+  for (const [pkg, dir, extras] of [
+    ["@openlup/core", "packages/core", []],
+    ["@openlup/outbox", "packages/outbox", []],
+    ["@openlup/platform", "packages/platform", ["sql"]],
+  ] as const) {
+    const dest = join(consumer, "node_modules", pkg);
+    mkdirSync(dest, { recursive: true });
+    copyFileSync(join(root, dir, "package.json"), join(dest, "package.json"));
+    cpSync(join(root, dir, "dist"), join(dest, "dist"), { recursive: true });
+    for (const extra of extras) {
+      if (existsSync(join(root, dir, extra))) cpSync(join(root, dir, extra), join(dest, extra), { recursive: true });
+    }
+  }
+  cpSync(join(root, "node_modules/zod"), join(consumer, "node_modules/zod"), { recursive: true });
+  return consumer;
+}
+
+it("proves the heavy managed standalone non-starter subpath surface against built packages", () => {
+  const consumer = heavyManagedConsumerFixture();
+  expect(() => proveHeavyManagedConsumer(consumer)).not.toThrow();
+});
+
+it.each([
+  ["commerce OMS ladder predicate drift", "node_modules/@openlup/platform/dist/commerce/model/omsOperationalLadder.js", "shipping_address_id IS NULL", "shipping_address_id = ''"],
+  ["invoicing identity mismatch classification", "node_modules/@openlup/platform/dist/invoicing/paymentReadback.js", "provider_payment_identity_mismatch", "provider_other_mismatch"],
+  ["migrations runner mutual exclusion guard", "node_modules/@openlup/platform/dist/migrations/postgresRunner.js", "postgres_pool_and_factory_mutually_exclusive", "other_error"],
+  ["composition node host http readiness guard", "node_modules/@openlup/platform/dist/composition/nodeHost.js", "has no http runtime", "different message"],
+  ["payments verifyPaymentAttemptNow amount guard", "node_modules/@openlup/platform/dist/payments/paymentVerifyNowService.js", "terminalAmountMismatch(attempt, providerStatus)", "false"],
+  ["outbox composeIndependentHandlers", "node_modules/@openlup/outbox/dist/registry.js", "projectProcessedDetail?.(", "undefined; //"],
+] as const)("turns the heavy managed consumer canary red on %s", (_label, relPath, needle, replacement) => {
+  const consumer = heavyManagedConsumerFixture();
+  const target = join(consumer, relPath);
+  const original = readFileSync(target, "utf8");
+  expect(original).toContain(needle);
+  writeFileSync(target, original.replace(needle, replacement));
+  expect(() => proveHeavyManagedConsumer(consumer)).toThrow();
+});

@@ -659,8 +659,8 @@ export declare function createExactSubscriptionRepricer(deps: PackageEditQuotePo
 export { renewalIdentity } from "./renewalIdentity.js";
 export { selectCatalogProfileCadence, type CatalogProfileCadenceInput, type CatalogProfileCadenceResult } from "./catalogProfileBinding.js";
 export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
-export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy } from "./renewalCycleMechanism.js";
-export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
+export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy, classifyManagedRenewalPayment } from "./renewalCycleMechanism.js";
+export type { RenewalCyclePolicy, ManagedRenewalPaymentEvidence, ManagedRenewalPaymentClassification } from "./renewalCycleMechanism.js";
 export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome, createDefaultRenewalPreflightPolicy } from "./renewalCycleRefusalMechanism.js";
 export type { RenewalPreflightPolicy, RenewalReplayPolicy, RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
 export { propagateRenewalFailure, createDefaultRenewalFailurePolicy } from "./renewalCycleFailureMechanism.js";
@@ -741,6 +741,8 @@ export { DEFAULT_SUBSCRIPTION_RETRY_BACKOFF_HOURS, validateSubscriptionRetrySche
 export type { SubscriptionRetrySchedulePolicy } from "./retrySchedulePolicy.js";
 export { DEFAULT_SUBSCRIPTION_EDIT_QUOTE_TTL_MINUTES, resolveSubscriptionEditQuoteTtlMinutes, validateSubscriptionEditQuoteTtlMinutes, installSubscriptionEditQuoteTtlMinutesPolicy, readSubscriptionEditQuoteTtlMinutesOverride, readSubscriptionEditQuoteTtlMinutesPolicy, } from "./editQuoteTtlPolicy.js";
 export type { SubscriptionEditQuoteTtlMinutesPolicy } from "./editQuoteTtlPolicy.js";
+export { DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE, validateSubscriptionRescheduleTimeZone, installSubscriptionRescheduleTimeZonePolicy, readSubscriptionRescheduleTimeZoneOverride, readSubscriptionRescheduleTimeZonePolicy, } from "./rescheduleTimeZonePolicy.js";
+export type { SubscriptionRescheduleTimeZonePolicy } from "./rescheduleTimeZonePolicy.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1501,6 +1503,7 @@ export interface ProviderRenewalPaymentPorts {
                 };
                 providerOccurredAt: string | null;
                 capturedAmountBasis?: "provider_capture_v1";
+                providerAccountRef?: string;
             } | {
                 kind: "unknown" | "unsupported" | "absent";
             }>;
@@ -1908,6 +1911,16 @@ import type { PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProv
 import type { RenewalPreparedAttemptPersistencePort } from "./contracts/renewal.js";
 import type { HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderResult, RenewalIntentResult, RenewalCycleDeps, RenewalExecutionContext, RenewalPrepareInput, RenewalAttemptResult, RenewalDeliveryClient, RenewalAllowedAdmission } from "./contracts/renewal.js";
 import { type RenewalPreflightPolicy, type RenewalReplayPolicy, type RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
+export type ManagedRenewalPaymentEvidence = {
+    kind: "result";
+    attemptStatus: SubscriptionRenewalChargeResult["attemptStatus"];
+} | {
+    kind: "row_error";
+    reason: string;
+};
+export type ManagedRenewalPaymentClassification = "prepared_without_ack" | "provider_acknowledged" | "settled" | "unclassified";
+/** Classify managed renewal reporting evidence without making a dispatch decision. */
+export declare function classifyManagedRenewalPayment(evidence: ManagedRenewalPaymentEvidence): ManagedRenewalPaymentClassification;
 /**
  * @deprecated Scheduled for simplification in 2.0.0; prefer `createDefaultRenewalCyclePolicy`
  * in 1.x instead of implementing the 7-generic policy surface directly.
@@ -2016,6 +2029,31 @@ export declare function replayRenewalAttempt<D extends HostedRenewalDue>(deps: R
 import type { RenewalIdentity, RenewalSchedule } from "./contracts/renewal.js";
 /** The host's existing dialect owns every byte; no normalization or new prefix. */
 export declare function renewalIdentity(schedule: RenewalSchedule, keys: (schedule: RenewalSchedule) => RenewalIdentity): RenewalIdentity;
+```
+## dist/subscriptions/rescheduleTimeZonePolicy.d.ts
+
+```ts
+/** @experimental Default IANA time zone for subscription reschedule calendar-day boundaries. */
+export declare const DEFAULT_SUBSCRIPTION_RESCHEDULE_TIMEZONE = "UTC";
+/** @experimental Installed policy configuring the IANA time zone for subscription reschedule calendar-day boundaries. */
+export interface SubscriptionRescheduleTimeZonePolicy {
+    revision: string;
+    timeZone: string;
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `subscription_reschedule_timezone` policy document using SQL-equivalent rules. */
+export declare function validateSubscriptionRescheduleTimeZone(value: unknown): SubscriptionRescheduleTimeZonePolicy;
+/** @experimental Install the subscription reschedule time zone policy on a host-owned write-capable connection. */
+export declare function installSubscriptionRescheduleTimeZonePolicy(db: Executor, policy: SubscriptionRescheduleTimeZonePolicy): Promise<void>;
+/** @experimental Read an explicit `subscription_reschedule_timezone` override, returning `undefined` when absent. */
+export declare function readSubscriptionRescheduleTimeZoneOverride(db: Executor): Promise<SubscriptionRescheduleTimeZonePolicy | undefined>;
+/** @experimental Read the installed `subscription_reschedule_timezone` policy or the UTC absence fallback. */
+export declare function readSubscriptionRescheduleTimeZonePolicy(db: Executor): Promise<SubscriptionRescheduleTimeZonePolicy>;
+export {};
 ```
 ## dist/subscriptions/retrySchedulePolicy.d.ts
 

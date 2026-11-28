@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { build } from "esbuild";
+import { DatabaseError } from "pg";
 import { afterAll, beforeAll, expect, expectTypeOf, it, vi } from "vitest";
+import { calculateCatalogueMoneyV2, planCatalogueMoneyV2 } from "@openlup/core/pricing";
 import { canonicalCatalogDraftJson, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV3,
   createPostgresCatalogPublicationCommands, installCatalogDefinitions, withCatalogPublicationRules, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
 import { bindCommerceMoneyLimitsV2Reader, createDbBackedCommerceQuotePortV2, installCommerceMoneyLimitsV2, readPublishedSkuTaxAssignments } from "@openlup/platform/commerce/server";
@@ -27,7 +29,8 @@ type Facts = Awaited<ReturnType<Deps["readPlan"]>>;
 type Binding = Parameters<Deps["destination"]["read"]>[3];
 type Contact = Parameters<Deps["destination"]["snapshot"]>[1]["original"]["contact"];
 type Failure = Extract<TaxQuoteResultV1, { kind: "refused" | "unavailable" }>;
-type Timing = "lookup" | "dependencies" | "claim" | "claimAck" | "adapter" | "seal" | "sealAck" | "recoveryRead";
+type Timing = "dependencies" | "claim" | "claimAck" | "adapter" | "seal" | "recoveryRead";
+type TerminalAck = "lookup" | "sealAck";
 
 const resources = storeJourneyResources();
 let store: JourneyInstallation;
@@ -142,13 +145,15 @@ async function installed(options: { basis?: "inclusive" | "exclusive"; shipping?
   const now = {
     ...start, contact: options.contact ?? { recipientName: "Sample Recipient", contactPhone: "001000000000", contactEmail: "protected@example.invalid" },
     timing: undefined as Timing | undefined, pauseUntil: "", taxFailure: undefined as Failure | undefined,
+    onTerminalAck: undefined as ((stage: TerminalAck, validUntil: string) => void) | undefined,
     throwTax: false, onAdapter: undefined as (() => Promise<void>) | undefined, lateCoverage: undefined as TaxCoverageRevision | undefined,
     alterReply: undefined as ((output: TaxQuoteResultV1) => TaxQuoteResultV1) | undefined, fallbackRate: options.rate ?? 2300,
-    qualified: true, claimFailure: undefined as Error | undefined,
+    qualified: true, claimFailure: undefined as Error | undefined, sealFailure: undefined as Error | undefined, deferSeal: false,
   };
   const request: CommerceQuoteV2Request = { key: randomUUID(), purpose: options.purpose ?? "final",
     mode: "one_time", lines: units.map((_minor, index) => ({ sku: "item-" + index, quantity: 1 })), deliverySelector: "delivery-a", paymentSelector: "payment-a" };
   const taxInputs: TaxQuoteRequestV1[] = [];
+  const taxReplies: TaxQuoteResultV1[] = [];
   const commands: Array<{ operation: string; identity: { evaluationKey: string }; pin?: { composition: unknown } }> = [];
   const bindings = new Map<string, Binding>();
   const fresh = { plans: 0, snapshots: 0, coverage: 0 };
@@ -161,22 +166,33 @@ async function installed(options: { basis?: "inclusive" | "exclusive"; shipping?
   };
   const lane: TaxCalculationTransactionLane = { async run(work) {
     let operation = "";
+    let terminalExpiry: string | undefined;
     const result = await realLane.run(db => work({ async query(sql, args) {
       if (args) {
         const input = JSON.parse(String(args[0])) as typeof commands[number];
         operation = input.operation;
         commands.push(input);
         if (operation === "claim") await pause("claim");
-        if (operation === "complete") await pause("seal");
+        if (operation === "complete") {
+          if (now.deferSeal) return { rows: [{ result: { kind: "pending" } }] };
+          await pause("seal");
+        }
       }
-      return db.query(sql, args);
+      const reply = await db.query(sql, args);
+      if (now.onTerminalAck && args) {
+        const terminal = reply.rows[0]?.result as { kind: string; validUntil?: string } | undefined;
+        if (terminal?.kind === "terminal") terminalExpiry = terminal.validUntil;
+      }
+      return reply;
     } }));
-    if (operation === "lookup") await pause("lookup");
+    if (terminalExpiry && (operation === "lookup" || operation === "complete")) {
+      now.onTerminalAck?.(operation === "lookup" ? "lookup" : "sealAck", terminalExpiry);
+    }
     if (operation === "claim") {
       await pause("claimAck");
       if (now.claimFailure) throw now.claimFailure;
     }
-    if (operation === "complete") await pause("sealAck");
+    if (operation === "complete" && now.sealFailure) throw now.sealFailure;
     return result;
   } };
   const owned = createPostgresDestinationPortV2(store.runtime);
@@ -256,6 +272,7 @@ async function installed(options: { basis?: "inclusive" | "exclusive"; shipping?
         await now.onAdapter?.();
         if (now.taxFailure) return now.taxFailure;
         const output = await adapter.quote(input);
+        taxReplies.push(structuredClone(output));
         if (now.throwTax) {
           expect(output.kind).toMatch(/^(?:final|estimate)$/u);
           throw new Error("Scripted lost acknowledgment");
@@ -266,13 +283,24 @@ async function installed(options: { basis?: "inclusive" | "exclusive"; shipping?
     },
   };
   if (options.cutoff === "short") now.quoteCutoff = at(2200);
-  return { ctx, owner, request, bind: () => recipe.bindNativeQuotes(deps), deps, now, commands, taxInputs, bindings, fresh, privacy, coverage, terms };
+  return { ctx, owner, request, bind: () => recipe.bindNativeQuotes(deps), deps, now, commands, taxInputs, taxReplies, bindings, fresh, privacy, coverage, terms };
 }
 
 type Installed = Awaited<ReturnType<typeof installed>>;
 const row = async (fixture: Installed, key = fixture.request.key) => (await store.owner.query(
-  "SELECT calculation_id, generation, state, outcome_text, pin, contradiction FROM public.tax_calculations WHERE identity->>'evaluationKey'=$1",
+  `SELECT calculation_id, generation, state, outcome_text, pin, contradiction, adapter_money_text, adapter_result_digest
+    FROM public.tax_calculations WHERE identity->>'evaluationKey'=$1`,
   [key])).rows[0];
+const readMoney = async (calculationId: string) => (await store.runtime.query(
+  "SELECT public.tax_calculation_read_adapter_money_v1($1) AS result", [calculationId])).rows[0].result;
+const moneyHold = (calculationId: string) => ({ calculationId, status: "hold", adapterMoneyText: null, sealDigest: null });
+function originalMoney(f: Installed) {
+  const reply = f.taxReplies.at(-1);
+  if (!reply || !("money" in reply)) throw new Error("Expected an adapter success");
+  const adapterMoneyText = canonicalCatalogDraftJson(reply.money);
+  const sealDigest = evaluationDigest("adapter-result-seal", [reply.kind, destinationHash(adapterMoneyText), reply.evidenceDigest]);
+  return { adapterMoneyText, sealDigest };
+}
 const takeover = (fixture: Installed) => editOwner("tax_calculations",
   "lease_until=clock_timestamp()-interval '1 second' WHERE identity->>'evaluationKey'=$1", [fixture.request.key]);
 const noDispatch = { kind: "unavailable", code: "tax_adapter_unavailable", effect: "unknown" } as const;
@@ -309,6 +337,7 @@ it.each(["final", "estimate"] as const)("executes the installed single-rate one-
   expect(q.lines[1].discountAllocations).toEqual([]);
   expect(f.taxInputs).toHaveLength(0);
   const stored = await row(f);
+  expect(stored).toMatchObject({ adapter_money_text: null, adapter_result_digest: null });
   const [, frame] = JSON.parse(stored.outcome_text);
   expect(frame.evidence).toMatchObject({ calculationId: stored.calculation_id, coverage: { kind: "not_applicable" }, posting: "no_provider_posting" });
   expect(frame.evidence.policyRevision).toBe(evaluationDigest("fiscal-profile", [frame.evidence.facts, frame.evidence.coordinates]));
@@ -347,11 +376,326 @@ it.each([[1660, 60, 0], [1720, 120, 0], [1745, 120, 25]] as const)(
     expect(q.deliveryBuckets[0].parts).toHaveLength(1);
     expect(q.feeLines).toHaveLength(Number(feeTotal > 0));
     expect(f.taxInputs).toHaveLength(1);
-    const [, terminal] = JSON.parse((await row(f)).outcome_text);
+    const stored = await row(f);
+    const [, terminal] = JSON.parse(stored.outcome_text);
     expect(terminal.disposition).toBe("required");
     expect(q.taxEvidence.expiresAt).toBe(terminal.evidence.adapterEvidence.expiresAt);
+    const money = originalMoney(f);
+    expect(Buffer.from(stored.adapter_money_text)).toEqual(Buffer.from(money.adapterMoneyText));
+    expect(stored.adapter_result_digest).toBe(money.sealDigest);
+    const retained = stored.pin.request;
+    const issued = f.taxInputs[0]!;
+    const reconstructed = { ...retained, input: { ...retained.input,
+      destination: { ...retained.input.destination, address: issued.input.destination.address } } };
+    expect(reconstructed).toStrictEqual(issued);
+    expect(evaluationDigest("evaluation-request", reconstructed)).toBe(stored.pin.requestDigest);
+    expect({ kind: terminal.outcome.kind, money: JSON.parse(stored.adapter_money_text),
+      evidence: terminal.evidence.adapterEvidence, evidenceDigest: terminal.evidence.adapterDigest }).toEqual(f.taxReplies[0]);
+    expect(await readMoney(stored.calculation_id)).toStrictEqual(q.status === "final"
+      ? { calculationId: stored.calculation_id, status: "final", ...money } : moneyHold(stored.calculation_id));
+    expect(await f.bind().createQuote(f.owner, f.request)).toStrictEqual({ kind: "quoted", quote: q, freshness: "current" });
+    const { rows } = await store.runtime.query("SELECT public.tax_calculation_export_v1($1) AS result", [f.owner.clientId]);
+    expect(JSON.stringify(rows)).not.toContain("adapterMoneyText");
+    expect(JSON.stringify(rows)).not.toContain("adapter_result_digest");
   },
 );
+
+it("seals distinct adapter breakdowns even when the payable amount is equal", async () => {
+  const original = await installed({ basis: "exclusive", vector: 1660 });
+  const changed = await installed({ basis: "exclusive", vector: 1660, units: [890, 600] });
+  const a = quote(await original.bind().createQuote(original.owner, original.request));
+  const b = quote(await changed.bind().createQuote(changed.owner, changed.request));
+  expect(a.payableMinor).toBe(1660);
+  expect(b.payableMinor).toBe(a.payableMinor);
+  expect(a.taxTotal).not.toBe(b.taxTotal);
+  expect((await row(original)).adapter_result_digest).not.toBe((await row(changed)).adapter_result_digest);
+  expect((await row(original)).adapter_money_text).toBe(originalMoney(original).adapterMoneyText);
+  expect((await row(changed)).adapter_money_text).toBe(originalMoney(changed).adapterMoneyText);
+});
+
+it.each([false, true])("refuses a foreign adjustment from the original claim before completion (recovered=%s)", async recover => {
+  const f = await installed({ basis: "exclusive", vector: 1660, adjust: true });
+  if (recover) {
+    f.now.throwTax = true;
+    await expect(f.bind().createQuote(f.owner, f.request)).rejects.toMatchObject({ code: "commerce_quote_v2_unavailable" });
+    f.now.throwTax = false;
+    await takeover(f);
+    f.now.planInput = hostPlan("inclusive", null, [400, 400]);
+  }
+  f.now.alterReply = reply => JSON.parse(JSON.stringify(reply).replaceAll('"cent-off"', '"foreign@example.invalid"'));
+  const refused = await f.bind().createQuote(f.owner, f.request);
+  expect(refused).toMatchObject({ kind: "refused", code: "tax_breakdown_incomplete", field: expect.stringMatching(/^\/money\//u) });
+  expect(f.commands.filter(command => command.operation === "complete")).toEqual([]);
+  expect(f.fresh.plans).toBe(1);
+  const stored = await row(f);
+  expect(stored).toMatchObject({ state: "pending", generation: recover ? 2 : 1, adapter_money_text: null, adapter_result_digest: null });
+  expect(stored.pin.request.input.money.adjustments[0].adjustmentRef).toBe("cent-off");
+  expect(await readMoney(stored.calculation_id)).toStrictEqual(moneyHold(stored.calculation_id));
+  if (recover) expect(f.taxInputs[1]).toStrictEqual(f.taxInputs[0]);
+});
+
+it("refuses a balanced redistribution across the issued merchandise lines before completion", async () => {
+  const f = await installed({ basis: "exclusive", vector: 1660, adjust: true, coverageDecision: "out_of_scope" });
+  f.now.alterReply = reply => {
+    if (!("money" in reply)) throw new Error("Expected an adapter success");
+    const issued = f.taxInputs[0]!.input.money;
+    expect(reply.money.components[0]!.allocations).toHaveLength(1);
+    expect(reply.money.components[1]!.allocations).toHaveLength(0);
+    const moved = { ...issued, adjustments: issued.adjustments.map(adjustment => ({
+      ...adjustment, target: { lineKeys: ["line-1"] },
+    })) };
+    const plan = planCatalogueMoneyV2(moved);
+    const money = calculateCatalogueMoneyV2(moved, { kind: "provider", payableMinor: reply.money.payableMinor,
+      components: plan.components.map(({ ref, preDiscountMinor, allocations }) => ({
+        ref, states: [{ afterSequence: 0, amountMinor: preDiscountMinor, taxPositions: [] },
+          ...allocations.map(({ sequence, afterMinor }) => ({ afterSequence: sequence, amountMinor: afterMinor, taxPositions: [] }))],
+      })),
+    });
+    expect(money.components[0]!.allocations).toHaveLength(0);
+    expect(money.components[1]!.allocations).toHaveLength(1);
+    expect(money.payableMinor).toBe(reply.money.payableMinor);
+    return { ...reply, money };
+  };
+  expect(await f.bind().createQuote(f.owner, f.request)).toMatchObject({ kind: "refused", code: "tax_breakdown_incomplete",
+    field: expect.stringMatching(/^\/money\//u) });
+  expect(f.commands.map(command => command.operation)).toEqual(["lookup", "claim"]);
+  expect(await row(f)).toMatchObject({ state: "pending", adapter_money_text: null, adapter_result_digest: null });
+});
+
+function changeAssessmentId(reply: TaxQuoteResultV1, replacement: string): TaxQuoteResultV1 {
+  if (!("money" in reply)) throw new Error("Expected an adapter success");
+  const id = reply.evidence.positions.tax[0]!.positionRef;
+  const changed = JSON.parse(JSON.stringify(reply).replaceAll(JSON.stringify(id), JSON.stringify(replacement))) as typeof reply;
+  const { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision, coverage, positions } = changed.evidence;
+  const tax = positions.tax.map(({ resolutionDigest: _resolution, providerLineRef: _provider, ...assessment }) => assessment);
+  const fiscalDigest = evaluationDigest("fiscal", { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision,
+    coverage: coverage.vector, tax, fees: positions.fees });
+  const evidence = { ...changed.evidence, fiscalDigest };
+  return { ...changed, evidence, evidenceDigest: evaluationDigest("evidence", evidence) } as typeof reply;
+}
+
+it("reports the full adapter-money refusal table at its native call sites", async () => {
+  const supplementRemedy = "Supply the original verified adapter money through the native tax completion adapter.";
+  const purchase = { basis: "exclusive", vector: 1660, adjust: true } as const;
+  const prepare = async () => {
+    const fixture = await installed(purchase);
+    fixture.now.deferSeal = true;
+    await fixture.bind().createQuote(fixture.owner, fixture.request);
+    const wire = JSON.parse(JSON.stringify(fixture.commands.find(command => command.operation === "complete")));
+    const { adapterMoneyResult: money, ...seal } = wire.seal;
+    return { fixture, wire, money, seal, base: { ...wire, seal } };
+  };
+  const pending = await prepare();
+  const { wire, money, seal, base } = pending;
+  const supplement = (value: unknown) => ({ ...base, seal: { ...seal, adapterMoneyResult: value } });
+  const call = (value: object) => store.runtime.query("SELECT public.tax_calculation_complete_v1($1::jsonb) AS result", [value])
+    .then(({ rows }) => rows[0].result);
+  const replay = await prepare();
+  expect(await call(replay.wire)).toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
+  const erasure = await prepare();
+  const actor = { principalId: randomUUID() };
+  await store.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)",
+    [actor.principalId, actor.principalId + "@example.invalid"]);
+  await store.owner.query(`INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+    VALUES($1,'admin','active','legacy',clock_timestamp())`, [actor.principalId]);
+  expect(await erasure.fixture.privacy(true).operations.erase(actor, { subject: { kind: "contact", contactId: erasure.fixture.ctx.clientId },
+    idempotencyKey: randomUUID() })).toMatchObject({ outcome: "ERASED" });
+  const collision = await prepare();
+  const { scope: { adapter, accountRef, mode }, calculationRef: providerRef } = collision.wire.seal.evidence.adapterEvidence;
+  const providerKey = evaluationDigest("provider-calculation", {
+    installationRef: collision.wire.identity.installationRef, adapter, accountRef, mode, providerRef,
+  });
+  await store.owner.query("INSERT INTO public.tax_calculations(calculation_id,state,provider_digest) VALUES($1,'erased',$2)",
+    [randomUUID(), providerKey]);
+
+  const read = async (id: string | null, isolation: "READ COMMITTED" | "REPEATABLE READ") => {
+    const session = await store.runtime.connect();
+    try {
+      await session.query("BEGIN ISOLATION LEVEL " + isolation);
+      await session.query("SET LOCAL ROLE service_role");
+      return await session.query("SELECT public.tax_calculation_read_adapter_money_v1($1::uuid)", [id]);
+    } finally { await session.query("ROLLBACK"); session.release(); }
+  };
+  const { calculationId } = replay.wire;
+  const invalidFrame = () => store.owner.query(`INSERT INTO public.tax_calculations
+    SELECT (jsonb_populate_record(NULL::public.tax_calculations, to_jsonb(r) || '{"adapter_money_text":"{}"}'::jsonb)).*
+    FROM public.tax_calculations r WHERE calculation_id=$1`, [calculationId]);
+  const clear = () => store.owner.query("UPDATE public.tax_calculations SET adapter_money_text=NULL,adapter_result_digest=NULL WHERE calculation_id=$1",
+    [calculationId]);
+  const writerRefusal = async () => {
+    const f = await installed(purchase);
+    let planted: TaxQuoteResultV1 | undefined;
+    f.now.alterReply = reply => (planted = changeAssessmentId(reply, "foreign@example.invalid"));
+    const reply = await f.bind().createQuote(f.owner, f.request);
+    expect(verifyTaxQuoteResult(f.taxInputs[0]!, planted!)).toBeUndefined();
+    expect(f.commands.map(command => command.operation)).toEqual(["lookup", "claim"]);
+    expect(await row(f)).toMatchObject({ state: "pending", adapter_money_text: null, adapter_result_digest: null });
+    return reply;
+  };
+  const observe = async (run: () => Promise<unknown>) => {
+    try {
+      const result = await run();
+      const reply = result as { kind?: string; outcome?: unknown };
+      const refused = (reply.kind === "terminal" ? reply.outcome : reply) as { kind?: string; code?: string; field?: string; remedy?: string };
+      expect(refused.kind).toBe("refused");
+      return [refused.code, undefined, refused.field, refused.remedy];
+    } catch (error) {
+      if (!(error instanceof DatabaseError)) throw error;
+      return [error.message, error.code, error.detail, error.hint];
+    }
+  };
+  const badSupplement = ["tax_invalid_input", "22023", "/seal/adapterMoneyResult", supplementRemedy];
+  const replayConflict = ["tax_reference_conflict", "22023", "/taxEvidence", "Replay the original invocation and evidence."];
+  const wrongMoney = structuredClone(money);
+  wrongMoney.components[0].final.taxMinor++;
+  const duplicateMoney = structuredClone(money);
+  const positions = duplicateMoney.components[0].final.taxPositions;
+  positions.push({ ...positions[0], taxMinor: 0 });
+  const changedMoney = structuredClone(replay.money);
+  changedMoney.components[0].initial.taxPositions[0].positionRef += "-other";
+  const cases = [
+    ["missing fresh money", () => call(base), badSupplement],
+    ["JSON null money", () => call(supplement(null)), badSupplement],
+    ["supplement on an indeterminate outcome", () => call({ ...wire, seal: { ...wire.seal, evidence: null, disposition: "indeterminate",
+      outcome: { kind: "indeterminate" }, contradiction: true } }), badSupplement],
+    ["failed full money validation", () => call(supplement(wrongMoney)), badSupplement],
+    ["duplicate tax position in one state", () => call(supplement(duplicateMoney)), badSupplement],
+    ["writer assessment-token refusal", writerRefusal, ["tax_invalid_input", undefined, "/seal/adapterMoneyResult", supplementRemedy]],
+    ["changed terminal submission", () => call({ ...replay.wire, seal: { ...replay.wire.seal, contradiction: true } }), replayConflict],
+    ["populated replay missing money", () => call(replay.base), replayConflict],
+    ["populated replay with different canonical money", () => call({ ...replay.base, seal: { ...replay.seal, adapterMoneyResult: changedMoney } }),
+      replayConflict],
+    ["stale claim grant", () => call({ ...wire, claimToken: randomUUID() }),
+      ["tax_claim_stale", "55000", "/claim", "Read the original evaluation outcome."]],
+    ["erasure fence", () => call(erasure.wire),
+      ["destination_evidence_erased", "55000", "/destination/snapshotRef", "Review the privacy disposition through authorized support."]],
+    ["completion cutoff", () => call({ ...wire, seal: { ...wire.seal, validUntil: at(-1000) } }),
+      ["tax_calculation_expired", "55000", "/taxEvidence/expiresAt", "Select the destination again and obtain a fresh quote."]],
+    ["scoped provider reference collision", () => call(collision.wire),
+      ["tax_provider_reference_conflict", undefined, "/taxEvidence", "Reconcile the original calculation with the tax adapter owner before further work."]],
+    ["invalid pair at guarded insert", invalidFrame, ["tax_evaluation_frame_invalid", "23514", "/taxEvidence", undefined]],
+    ["standalone clear of a terminal pair", clear,
+      ["tax_evaluation_integrity_invalid", "55000", "/taxEvidence", "Recover the original evaluation from its authoritative owner."]],
+    ["NULL service read ID", () => read(null, "READ COMMITTED"),
+      ["tax_invalid_input", "22023", "/calculationId", "Supply the documented input."]],
+    ["unsupported service read isolation", () => read(calculationId, "REPEATABLE READ"),
+      ["destination_isolation_unsupported", "22023", "/transaction", "Use READ COMMITTED."]],
+  ] as const;
+  for (const [label, run, expected] of cases) expect(await observe(run), label).toStrictEqual(expected);
+  expect(await row(pending.fixture)).toMatchObject({ state: "pending", contradiction: false });
+  expect(await row(collision.fixture)).toMatchObject({ state: "terminal", adapter_money_text: null, adapter_result_digest: null });
+});
+
+it("commits only the winning claim generation when both grants carry valid money", async () => {
+  const f = await installed({ basis: "exclusive", vector: 1660, adjust: true });
+  f.now.deferSeal = true;
+  await f.bind().createQuote(f.owner, f.request);
+  const stale = f.commands.find(command => command.operation === "complete");
+  expect(stale).toBeDefined();
+  const original = await row(f);
+  await takeover(f);
+  f.now.deferSeal = false;
+  f.now.alterReply = reply => changeAssessmentId(reply, "alternate-position");
+  const q = quote(await f.bind().createQuote(f.owner, f.request));
+  const stored = await row(f);
+  expect(stored).toMatchObject({ state: "terminal", generation: 2, calculation_id: original.calculation_id });
+  expect(stored.adapter_money_text).toContain('"alternate-position"');
+  expect(stored.adapter_result_digest).not.toBe(originalMoney(f).sealDigest);
+  await expect(store.runtime.query("SELECT public.tax_calculation_complete_v1($1::jsonb)", [stale])).rejects.toMatchObject({
+    code: "55000", message: "tax_claim_stale", detail: "/claim",
+  });
+  expect(await row(f)).toStrictEqual(stored);
+  expect(q.taxEvidence.calculationId).toBe(stored.calculation_id);
+});
+
+it("validates the private wire in order, rolls back the pair and replays without a write", async () => {
+  const f = await installed({ basis: "exclusive", vector: 1745, adjust: true });
+  f.now.deferSeal = true;
+  await f.bind().createQuote(f.owner, f.request);
+  const wire = JSON.parse(JSON.stringify(f.commands.find(command => command.operation === "complete")));
+  const { adapterMoneyResult: money, ...baseSeal } = wire.seal;
+  const base = { ...wire, seal: baseSeal };
+  const supplement = (value: unknown) => ({ ...wire, seal: { ...baseSeal, adapterMoneyResult: value } });
+  const sql = "SELECT public.tax_calculation_complete_v1($1::jsonb) AS result";
+  const call = (value: object) => store.runtime.query(sql, [value]).then(result => result.rows[0].result);
+  const badSupplement = { code: "22023", message: "tax_invalid_input", detail: "/seal/adapterMoneyResult" };
+  const state = await row(f);
+  expect(state).toMatchObject({ state: "pending", adapter_money_text: null, adapter_result_digest: null });
+
+  await expect(call(base)).rejects.toMatchObject(badSupplement);
+  for (const value of [null, [], { ...money, payableMinor: "1745" }, { ...money, extra: true }])
+    await expect(call(supplement(value))).rejects.toMatchObject(badSupplement);
+  for (const edit of [
+    (value: typeof money) => { value.components[0].final.taxMinor++; },
+    (value: typeof money) => { value.components[0].allocations[0].sequence++; },
+    (value: typeof money) => { value.components[0].initial.taxPositions[0].positionRef = "foreign-position"; },
+    (value: typeof money) => { value.fees[0].feeKey = "foreign-fee"; },
+  ]) {
+    const value = structuredClone(money);
+    edit(value);
+    await expect(call(supplement(value))).rejects.toMatchObject(badSupplement);
+  }
+  await expect(call({ ...supplement(null), claimToken: randomUUID() })).rejects.toMatchObject({ code: "55000", detail: "/claim" });
+  await expect(call({ ...wire, seal: { ...baseSeal, adapterMoneyResult: null, validUntil: at(-1000) } }))
+    .rejects.toMatchObject({ code: "55000", message: "tax_calculation_expired", detail: "/taxEvidence/expiresAt" });
+  await expect(call({ ...wire, seal: { ...baseSeal, adapterMoneyResult: money, evidence: null, disposition: "indeterminate",
+    outcome: { kind: "indeterminate" }, contradiction: true } })).rejects.toMatchObject(badSupplement);
+  await expect(store.runtime.query(sql, ['{"seal":{"adapterMoneyResult":"\\u0000"}}'])).rejects.toMatchObject({ code: "22P05" });
+  await mutate(store, "public.tax_calculation_adapter_money_v1(jsonb,jsonb,jsonb)",
+    "'resultDigest',public.tax_calculation_hash_v1", "'resultDigest',repeat('g',64),'ignoredDigest',public.tax_calculation_hash_v1",
+    async () => { await expect(call(wire)).rejects.toMatchObject(badSupplement); });
+  expect(await row(f)).toStrictEqual(state);
+
+  const fiscal = await installed();
+  fiscal.now.deferSeal = true;
+  await fiscal.bind().createQuote(fiscal.owner, fiscal.request);
+  const fiscalWire = JSON.parse(JSON.stringify(fiscal.commands.find(command => command.operation === "complete")));
+  await expect(call({ ...supplement(null), calculationId: fiscalWire.calculationId, claimToken: fiscalWire.claimToken }))
+    .rejects.toMatchObject({ code: "55000", message: "tax_claim_stale", detail: "/claim" });
+  await expect(call({ ...fiscalWire, seal: { ...fiscalWire.seal, adapterMoneyResult: money } })).rejects.toMatchObject(badSupplement);
+  expect(await row(fiscal)).toMatchObject({ state: "pending", adapter_money_text: null, adapter_result_digest: null });
+  expect(await call(fiscalWire)).toMatchObject({ kind: "terminal", outcome: { kind: "final" } });
+  expect(await row(fiscal)).toMatchObject({ state: "terminal", adapter_money_text: null, adapter_result_digest: null });
+
+  const db = await store.runtime.connect();
+  try {
+    await db.query("BEGIN");
+    expect((await db.query(sql, [wire])).rows[0].result.kind).toBe("terminal");
+    expect(await row(f)).toStrictEqual(state);
+  } finally { await db.query("ROLLBACK"); db.release(); }
+  expect(await row(f)).toStrictEqual(state);
+
+  const limit = 1_048_576 - Buffer.byteLength(canonicalCatalogDraftJson({ ...base, padding: "" }));
+  const padding = "é".repeat(Math.floor(limit / 2)) + "x".repeat(limit % 2);
+  expect(Buffer.byteLength(JSON.stringify({ ...wire, padding }))).toBeGreaterThan(1_048_576);
+  await expect(call({ ...supplement(null), padding: padding + "x" })).rejects.toMatchObject({ code: "22023", detail: "/" });
+  const [terminal, concurrent] = await Promise.all([call({ ...wire, padding }), call(wire)]);
+  expect(concurrent).toStrictEqual(terminal);
+  const version = async () => (await store.owner.query("SELECT xmin::text FROM public.tax_calculations WHERE calculation_id=$1",
+    [wire.calculationId])).rows[0];
+  const written = await version();
+  expect(await call(wire)).toStrictEqual(terminal);
+  const altered = structuredClone(money);
+  altered.components[0].initial.taxPositions[0].positionRef += "-other";
+  for (const candidate of [base, supplement(altered), { ...supplement(null), seal: { ...supplement(null).seal, contradiction: true } }])
+    await expect(call(candidate)).rejects.toMatchObject({ code: "22023", message: "tax_reference_conflict", detail: "/taxEvidence" });
+  await expect(call(supplement(null))).rejects.toMatchObject(badSupplement);
+  expect(await version()).toStrictEqual(written);
+});
+
+it("recovers a committed money seal after the completion acknowledgement is lost", async () => {
+  const f = await installed({ basis: "exclusive", vector: 1660, adjust: true });
+  f.now.sealFailure = new Error("Scripted lost commit acknowledgment");
+  const q = quote(await f.bind().createQuote(f.owner, f.request));
+  const stored = await row(f);
+  expect(f.commands.map(command => command.operation)).toEqual(["lookup", "claim", "complete", "lookup"]);
+  expect(await readMoney(q.taxEvidence.calculationId)).toStrictEqual({
+    calculationId: q.taxEvidence.calculationId, status: "final", ...originalMoney(f),
+  });
+  expect(await f.bind().createQuote(f.owner, f.request)).toStrictEqual({ kind: "quoted", quote: q, freshness: "current" });
+  expect(f.taxInputs).toHaveLength(1);
+  expect(await row(f)).toStrictEqual(stored);
+});
 
 it.each([
   ["name", { contactPhone: "001000009900" }, 10],
@@ -377,15 +721,19 @@ it("allows a handling-only plan without contact and checks corrupt document evid
   const f = await installed({ shipping: 10, contact: {}, units: [10] });
   const delivery = f.now.planInput.baseline.delivery.map(bucket => ({ ...bucket, kind: "handling" as const }));
   const initial = f.deps.destination.snapshot;
+  let change = "document_digest=repeat('1',64)";
   f.deps.destination.snapshot = async (...args) => {
     const issued = await initial(...args);
     if ("binding" in issued) await store.owner.query(
-      "UPDATE public.commerce_destination_v2_documents SET document_digest=$2 WHERE snapshot_ref=$1", [issued.binding.snapshotRef, "1".repeat(64)]);
+      `UPDATE public.commerce_destination_v2_documents SET ${change} WHERE snapshot_ref=$1`, [issued.binding.snapshotRef]);
     return issued;
   };
   exact(await f.bind().createQuote(f.owner, f.request),
     refusal("destination_digest_mismatch", "/destination/destinationDigest", "Replay the original document and its digest."));
-  expect(f.commands.map(command => command.operation)).toEqual(["lookup"]);
+  change = "purpose=NULL,evidence_expires_at=issued_at";
+  exact(await f.bind().createQuote(f.owner, { ...f.request, key: randomUUID() }),
+    refusal("commerce_destination_owner_mismatch", "/destination/snapshotRef", "Re-obtain evidence through the authenticated owner."));
+  expect(f.commands.map(command => command.operation)).toEqual(["lookup", "lookup"]);
   expect(f.taxInputs).toHaveLength(0);
   f.deps.destination.snapshot = initial;
   f.now.planInput = { ...f.now.planInput, baseline: { ...f.now.planInput.baseline, delivery } };
@@ -534,17 +882,16 @@ it("preserves the owned contradiction marker and drops the adapter vector", asyn
   const expected = refusal("tax_coverage_inconsistent", "/observations", "Have the coverage owner reconcile registration, treatment and assessment for /observations, then obtain a fresh quote.");
   exact(await f.bind().createQuote(f.owner, f.request), expected);
   const stored = await row(f);
-  expect(stored).toMatchObject({ contradiction: true, state: "terminal" });
+  expect(stored).toMatchObject({ contradiction: true, state: "terminal", adapter_money_text: null, adapter_result_digest: null });
   expect(stored.outcome_text).not.toMatch(/discard|vector|observations\/123/u);
   exact(await f.bind().createQuote(f.owner, f.request), expected);
   expect(await row(f)).toStrictEqual(stored);
 });
 
-it.each(["dependencies", "claim", "claimAck", "adapter", "seal", "sealAck", "lookup", "recoveryRead"] as const)(
+it.each(["dependencies", "claim", "claimAck", "adapter", "seal", "recoveryRead"] as const)(
   "fences independently delayed %s", async stage => {
     const f = await installed({ basis: "exclusive", cutoff: "short" });
     f.now.pauseUntil = f.now.quoteCutoff;
-    if (stage === "lookup") quote(await f.bind().createQuote(f.owner, f.request));
     if (stage === "recoveryRead") {
       f.now.taxFailure = noDispatch;
       exact(await f.bind().createQuote(f.owner, f.request), pending);
@@ -553,16 +900,31 @@ it.each(["dependencies", "claim", "claimAck", "adapter", "seal", "sealAck", "loo
     }
     f.now.timing = stage;
     const result = await f.bind().createQuote(f.owner, f.request);
-    if (stage === "sealAck" || stage === "lookup") {
-      expect(result).toMatchObject({ kind: "quoted", freshness: "historical" });
-      expect((await row(f)).state).toBe("terminal");
-    } else {
-      exact(result, expired);
-      expect((await row(f))?.outcome_text ?? null).toBeNull();
-    }
-    expect(f.taxInputs).toHaveLength(["seal", "sealAck", "lookup", "adapter", "recoveryRead"].includes(stage) ? 1 : 0);
+    exact(result, expired);
+    expect((await row(f))?.outcome_text ?? null).toBeNull();
+    expect(f.taxInputs).toHaveLength(["seal", "adapter", "recoveryRead"].includes(stage) ? 1 : 0);
   }, 12_000,
 );
+
+it.each(["sealAck", "lookup"] as const)("fences independently delayed %s", async stage => {
+  const f = await installed({ basis: "exclusive" });
+  const port = f.bind();
+  const original = stage === "lookup" ? await port.createQuote(f.owner, f.request) : undefined;
+  if (original) expect(original).toMatchObject({ kind: "quoted", freshness: "current" });
+  const acknowledge = vi.fn((_stage: TerminalAck, validUntil: string) => {
+    vi.setSystemTime(new Date(validUntil));
+  });
+  f.now.onTerminalAck = acknowledge;
+  let result: QuoteOutcome;
+  try { result = await port.createQuote(f.owner, f.request); }
+  finally { vi.useRealTimers(); }
+  expect(result).toMatchObject({ kind: "quoted", freshness: "historical" });
+  const historical = quote(result);
+  expect(acknowledge).toHaveBeenCalledExactlyOnceWith(stage, historical.taxEvidence.expiresAt);
+  if (original) expect(historical).toStrictEqual(quote(original));
+  expect((await row(f)).state).toBe("terminal");
+  expect(f.taxInputs).toHaveLength(1);
+});
 
 it("does not dispatch after an ambiguous claim commit", async () => {
   const f = await installed({ basis: "exclusive" });
@@ -654,7 +1016,9 @@ it.each(["tax_adapter_unavailable", "tax_coverage_evidence_unavailable"] as cons
   const expected = { kind: "unavailable", code, field: "/taxEvidence", effect: "none", remedy: "Request a new quote when the tax service is available." };
   exact(await f.bind().createQuote(f.owner, f.request), expected);
   exact(await f.bind().createQuote(f.owner, f.request), expected);
-  expect((await row(f)).outcome_text).not.toContain("vector");
+  const stored = await row(f);
+  expect(stored.outcome_text).not.toContain("vector");
+  expect(stored).toMatchObject({ adapter_money_text: null, adapter_result_digest: null });
   expect(f.taxInputs).toHaveLength(1);
 });
 
@@ -664,7 +1028,8 @@ it("keeps unqualified refusals fenced even when they carry coverage data", async
   f.now.taxFailure = { kind: "refused", code: "tax_coverage_inconsistent", field: "/observations",
     remedy: "discard", coverage: { digest: "3".repeat(64), vector: [] } };
   exact(await f.bind().createQuote(f.owner, f.request), pending);
-  expect(await row(f)).toMatchObject({ state: "pending", outcome_text: null, contradiction: false });
+  expect(await row(f)).toMatchObject({ state: "pending", outcome_text: null, contradiction: false,
+    adapter_money_text: null, adapter_result_digest: null });
   expect(f.commands.map(command => command.operation)).toEqual(["lookup", "claim"]);
 });
 
@@ -1205,8 +1570,10 @@ it.each([["out_of_scope", "skip"], ["exempt", "required"]] as const)(
     const f = await installed({ basis: "exclusive", coverageDecision });
     const q = quote(await f.bind().createQuote(f.owner, f.request));
     expect(q.taxTotal).toBe(0);
-    const [, terminal] = JSON.parse((await row(f)).outcome_text);
+    const stored = await row(f);
+    const [, terminal] = JSON.parse(stored.outcome_text);
     expect(terminal.disposition).toBe(disposition);
+    expect(stored).toMatchObject({ adapter_money_text: originalMoney(f).adapterMoneyText, adapter_result_digest: originalMoney(f).sealDigest });
   },
 );
 

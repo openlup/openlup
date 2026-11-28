@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolvedAcquisitionTermsSchema, shippingTermsSchema } from "@openlup/platform/pricing/browser";
 import { quoteContextSchema } from "../../../src/domains/commerce/contracts.js";
-import { withCheckoutOfferContext } from "./checkoutOfferPolicyPort.js";
+import { withCheckoutOfferContext } from "@openlup/platform/commerce/server";
 import { intent, quoteSnapshot } from "./commerceCheckoutHandler.testFixtures.js";
 describe("checkout quote context binding", () => {
   it("retains bounded offer evidence and the resolved shipping/acquisition promises at the actual validator", async () => {

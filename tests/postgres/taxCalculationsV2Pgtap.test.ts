@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { createTaxCalculationPrivacyContributor } from "@openlup/platform/identity";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
@@ -15,18 +16,17 @@ const script = "tests/postgres/fixtures/taxCalculationsV2/replayed.sql";
 const resources = storeJourneyResources();
 let container: PostgresContainer | undefined, pool: Pool;
 beforeAll(async () => {
+  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+  const forwardIndex = manifest?.forward.findIndex(unit => unit.file === forward) ?? -1;
+  if (!manifest || forwardIndex < 0) throw new Error(`Tax calculation forward missing from the platform migration manifest: ${forward}`);
   container = await runManagedCompatPostgres({ name: `tax-calculations-pgtap-${process.pid}`, password: "synthetic-conformance" });
   pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:") });
-  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   await pool.query("DROP SCHEMA auth CASCADE; DROP OWNED BY anon,authenticated,service_role CASCADE; DROP ROLE anon,authenticated,service_role;     CREATE ROLE service_role; CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions");
   const client = await pool.connect();
   try {
-    // The later forwards depend on tables or routines the two evaluation forwards create.
-    for (const unit of [manifest.baseline, ...manifest.forward]) {
-      if (unit.file !== forward && unit.file !== claimSeal
-        && !/_(?:function_search_path_pg_temp|tax_calculation_composition|order_money_v2_storage)\.sql$/u.test(unit.file)) {
-        await client.query(readFileSync(unit.file, "utf8"));
-      }
+    // Each replay case applies the storage forward itself after setting up its roles and ACL control.
+    for (const unit of [manifest.baseline, ...manifest.forward.slice(0, forwardIndex)]) {
+      await client.query(readFileSync(unit.file, "utf8"));
     }
   } finally { client.release(); }
 }, postgresSetupTimeoutMs);
@@ -112,7 +112,8 @@ async function assertGrants(runtime: Pool, login: string) {
     ARRAY(SELECT proname::text FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname LIKE 'tax_calculation_%'
       AND has_function_privilege(current_user, oid, 'EXECUTE') ORDER BY proname) AS routines`);
   expect(rows).toStrictEqual([{ login, runtime: login, table_access: false, column_access: false,
-    routines: ["tax_calculation_begin_v1", "tax_calculation_complete_v1", "tax_calculation_erase_v1", "tax_calculation_export_v1"] }]);
+    routines: ["tax_calculation_begin_v1", "tax_calculation_complete_v1", "tax_calculation_erase_v1", "tax_calculation_export_v1",
+      "tax_calculation_read_adapter_money_v1"] }]);
   const roleAccess = await runtime.query(`SELECT rolname FROM pg_roles WHERE rolname::text=ANY($1)
     AND (has_table_privilege(oid,'public.tax_calculations','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
       OR has_any_column_privilege(oid,'public.tax_calculations','SELECT,INSERT,UPDATE,REFERENCES'))`,
@@ -122,7 +123,7 @@ async function assertGrants(runtime: Pool, login: string) {
   expect((await runtime.query("SELECT public.tax_calculation_export_v1(gen_random_uuid()) AS result")).rows).toEqual([{ result: [] }]);
 }
 
-it("limits the separate qualified runtime login to the two privacy and two evaluation entry points", async () => {
+it("limits the separate qualified runtime login to privacy, evaluation and sealed money entry points", async () => {
   const native = await resources.installation("tax-grants");
   await assertGrants(native.runtime, "transfer_runtime");
   expect((await native.owner.query(otherAcl("public.tax_calculations"))).rows).toEqual([]);

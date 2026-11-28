@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CUSTOMER_DEFAULTS_SNAPSHOT_VERSION } from "../../../src/domains/commerce/customerDefaultsSnapshotContracts.js";
-import { readCheckoutCustomerDefaults } from "./commerceCheckoutCustomerDefaults.js";
+import { readCheckoutCustomerDefaults as readPlatformCheckoutCustomerDefaults } from "@openlup/platform/commerce/server";
+import {
+  CUSTOMER_DEFAULTS_SNAPSHOT_VERSION,
+  commerceCustomerDefaultsSnapshotSchema,
+} from "../../../src/domains/commerce/customerDefaultsSnapshotContracts.js";
+
+function readCheckoutCustomerDefaults(input: Parameters<typeof readPlatformCheckoutCustomerDefaults>[0]) {
+  return readPlatformCheckoutCustomerDefaults(input, commerceCustomerDefaultsSnapshotSchema);
+}
 
 describe("readCheckoutCustomerDefaults", () => {
   it("returns null when the optional defaults port is not configured", async () => {

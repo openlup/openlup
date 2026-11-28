@@ -52,12 +52,14 @@ export async function nativeSubscription(page: Page,baseURL: string | undefined,
   const purchased = await read(),id = uuid(purchased.subscriptionId);
   // Servicing starts after the real introductory phase, never by rewriting its marker/count.
   if (config.quote.acquisition.enabled && options.completeIntro !== false) {
-    const code = `import assert from 'node:assert/strict';import pg from 'pg';
+    const code = `
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+import assert from 'node:assert/strict';import pg from 'pg';
       import {createNativeRenewalCodec,createPostgresRenewalStore,createPostgresRenewalSettlementPort,runOneAutomaticSubscriptionRenewal} from '@openlup/platform/subscriptions';
       import {createPostgresRenewalReservationPort} from '@openlup/platform/inventory';
       import {composeRenewalSandbox} from './host/renewal-sandbox.ts';
       import {selectConfiguration} from './owned/store.config.ts';
-      const config=selectConfiguration(${JSON.stringify(config.id)}),pool=new pg.Pool({connectionString:'postgresql://starter_runtime@database/neutral_store'});
+      const config=selectConfiguration(${JSON.stringify(config.id)}),pool=new pg.Pool({connectionString:runtimeConnectionString()});
       const withTransaction=async work=>{const db=await pool.connect();try{await db.query('BEGIN');const value=await work(db);await db.query('COMMIT');return value;}catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}};
       try {for(let cycle=0;cycle<2;cycle++) {
         const next=(await pool.query('SELECT next_cycle_at FROM public.subscriptions WHERE id=$1',[${JSON.stringify(id)}])).rows[0].next_cycle_at;
@@ -108,17 +110,21 @@ export async function nativeSubscription(page: Page,baseURL: string | undefined,
   const setSubject = (value: unknown) => sql(`UPDATE public.commerce_settings SET value_text=convert_from(decode('${Buffer.from(JSON.stringify(value)).toString('hex')}','hex'),'UTF8') WHERE key='${subjectKey}'`);
   const setStock = (variantId: string,amount: number) => {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('fixture_stock_invalid');
-    const code = `import pg from 'pg'; import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
-      const pool=new pg.Pool({connectionString:'postgresql://starter_runtime@database/neutral_store'});
+    const code = `
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+import pg from 'pg'; import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
+      const pool=new pg.Pool({connectionString:runtimeConnectionString()});
       try {const row=(await pool.query('SELECT sku FROM public.catalog_skus WHERE id=$1',[${JSON.stringify(uuid(variantId))}])).rows[0];
       await createPostgresFulfillmentStockSyncPort(pool,{sourceKey:${JSON.stringify(`starter-demo:${config.id}`)},readLocalInventoryStock:async()=>[]})
       .recordProviderStockCurrent({requestKey:${JSON.stringify(randomUUID())},snapshot:{providerRef:'starter-sandbox',collectedAt:'2030-01-01T00:00:00.000Z',sourceRevision:null,revisionSource:'collection',quantityKind:'snapshot',skuRef:row.sku,totalQuantity:${amount},forSaleQuantity:${amount},reservedOrUnavailableQuantity:0,syncRunId:'editor-browser'},inventoryClass:'sellable',lastSyncedAt:'2030-01-01T00:00:00.000Z',staleAfter:'3000-01-01T00:00:00.000Z'});}finally{await pool.end()}`;
     compose(['exec','-T','--user','node','application','node','--input-type=module'],code);
   };
   const captureNotices = (): { key: string; kind: string; subscriptionId: string }[] => {
-    const code = `import pg from 'pg'; import {createPostgresLifecycleMessages} from '@openlup/platform/subscriptions';
+    const code = `
+    import { runtimeConnectionString } from './host/runtime-database.ts';
+import pg from 'pg'; import {createPostgresLifecycleMessages} from '@openlup/platform/subscriptions';
       import {createPostgresTransactionalDeliveryStore,createTransactionalDelivery,createCapturedTransactionalDelivery} from '@openlup/platform/communications';
-      const url='postgresql://starter_runtime@database/neutral_store',pool=new pg.Pool({connectionString:url}),store=createPostgresTransactionalDeliveryStore({connectionString:url}),captures=[];
+      const url=runtimeConnectionString(),pool=new pg.Pool({connectionString:url}),store=createPostgresTransactionalDeliveryStore({connectionString:url}),captures=[];
       try {const delivery=createTransactionalDelivery({store,delivery:createCapturedTransactionalDelivery({outcome(command){captures.push({key:command.idempotencyKey});return {state:'accepted'}}})});
       const kinds=new Map();const dispatcher=createPostgresLifecycleMessages({delivery:{send:delivery.send,readReceipt:store.readReceipt},async withSession(work){const db=await pool.connect();try{return await work(db)}finally{db.release()}},async bind(notice){kinds.set(notice.messageKey,{kind:notice.kind,subscriptionId:notice.subscriptionId});return {recipientReference:'client:'+notice.clientId,templateReference:notice.templateSlug}}});
       await dispatcher.run(100); await dispatcher.run(100);process.stdout.write(JSON.stringify(captures.map(item=>({...item,...kinds.get(item.key)}))));}finally{await store.close();await pool.end()}`;

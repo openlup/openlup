@@ -4,6 +4,7 @@ import { gzipSync } from 'node:zlib';
 import { NATIVE_CATALOG_CONTROLS } from './reviewed-platform-forward.ts';
 
 export const REVIEW_RULES_VERSION = 3;
+export const DEFER_HARDENING = 'openlup-defer-hardening-20261126';
 export const ECONOMY_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 -->';
 export const COMPRESSED_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 gzip -->';
 export const RECEIPT_MARKER = '<!-- openlup-native-review-receipt v2 -->';
@@ -45,50 +46,169 @@ function currentReports(session) {
   const start = session.history.findLastIndex(event => event.type === 'prepare');
   return session.history.slice(start + 1).filter(event => event.type === 'report').map(event => event.report);
 }
-function findingState(session) {
+const DEFER_TARGETS = [
+  /^#[1-9]\d*$/u,
+  /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*#[1-9]\d*$/u,
+  /^(?:PR|issue)[-#][1-9]\d*$/iu,
+  /^docs\/(?:[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.md(?:#[A-Za-z0-9_.:-]+)?$/u,
+  /^(?:milestone|plan):[A-Za-z0-9][A-Za-z0-9_./:#-]*$/u,
+  /^(?=[A-Za-z0-9-]*\d)[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+$/u,
+];
+const structuredDeferTarget = target => typeof target === 'string' &&
+  !target.includes('..') &&
+  DEFER_TARGETS.some(pattern => pattern.test(target));
+const normalizeSummary = summary => summary.trim().replace(/\s+/gu, ' ').toLowerCase();
+const isLegacyDefer = (base, options = {}) =>
+  options.legacyDefer === true || Boolean(base && options.legacyDeferBases?.has(base));
+function findingState(session, options = {}) {
   const open = new Map();
+  const pendingDefer = new Map();
+  const deferred = new Map();
   let openAtPrepare = new Set();
   const closedInCurrentRound = new Set();
+  const confirmedDefersInCurrentRound = new Set();
+  let currentBase = session.candidate?.base;
   for (const event of session.history) {
     if (event.type === 'prepare') {
+      currentBase = event.candidate?.base;
       openAtPrepare = new Set(open.keys());
       closedInCurrentRound.clear();
+      confirmedDefersInCurrentRound.clear();
     } else if (event.type === 'report') {
       for (const finding of event.report.findings) if (finding.material) {
         open.set(finding.id, { id: finding.id, summary: finding.summary, material: true });
+        pendingDefer.delete(finding.id);
+        deferred.delete(finding.id);
         closedInCurrentRound.delete(finding.id);
+        confirmedDefersInCurrentRound.delete(finding.id);
       }
       for (const id of event.report.closes) {
         open.delete(id);
         if (openAtPrepare.has(id)) closedInCurrentRound.add(id);
       }
+      for (const id of event.report.acceptsDefer ?? []) {
+        const pending = pendingDefer.get(id);
+        if (pending) {
+          pendingDefer.delete(id);
+          deferred.set(id, pending);
+        }
+        confirmedDefersInCurrentRound.add(id);
+      }
+    } else if (event.type === 'defer') {
+      const prior = open.get(event.findingId);
+      open.delete(event.findingId);
+      const entry = {
+        id: event.findingId,
+        summary: prior?.summary ?? event.findingId,
+        target: event.target,
+        decision: event.decision,
+        reason: event.reason,
+        at: event.at,
+      };
+      if (isLegacyDefer(currentBase, options)) deferred.set(event.findingId, entry);
+      else pendingDefer.set(event.findingId, entry);
     }
   }
-  return { open, openAtPrepare, closedInCurrentRound };
+  return { open, pendingDefer, deferred, openAtPrepare, closedInCurrentRound, confirmedDefersInCurrentRound };
 }
-function openFindings(session) { return findingState(session).open; }
-function computeRegroupAdvisory(session, trailingFloor = 1) {
-  const open = new Set();
+function openFindings(session, options = {}) { return findingState(session, options).open; }
+function roundFloorForPrepare(session, index, event, options = {}) {
+  const fallback = candidateFloor(event.candidate, event.intent?.risk ?? 'routine');
+  try {
+    const nextPrepare = session.history.findIndex((item, pos) => pos > index && item.type === 'prepare');
+    const end = nextPrepare === -1 ? session.history.length : nextPrepare;
+    const sliceEnd = nextPrepare !== -1 && end > 0 && session.history[end - 1]?.type === 'rules' ? end - 1 : end;
+    const history = session.history.slice(0, sliceEnd);
+    const version = history.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
+    if (version === 2) {
+      return Math.max(
+        legacyRequiredReviewers(legacyClassifyRisk(event.candidate, event.intent?.risk ?? 'routine')),
+        event.candidate.integration ? 2 : 0,
+      );
+    }
+    const slice = { ...session, version, history, candidate: event.candidate, preparedAt: event.at };
+    return coverageRequirement(slice, options).floor;
+  } catch {
+    return fallback;
+  }
+}
+export function computeRegroupAdvisory(session, trailingFloor = undefined, options = {}) {
+  const open = new Map();
+  const findingSummaries = new Map();
+  const closedIds = new Set();
+  const closedSummaries = new Set();
   const cycles = [];
   let current = null;
-  for (const event of session.history) {
+  let activeFloor = candidateFloor(session.candidate, latestIntent(session)?.risk ?? 'routine');
+  const pushCycle = (cycle, floorOverride, superseded = false) => {
+    const floor = Math.max(1, floorOverride ?? cycle.floor);
+    if (cycle.reports < floor && !(superseded && cycle.failedReports > 0)) return;
+    const openIdsAfter = new Set(open.keys());
+    let sameIdPersists = false;
+    let repeatedClosed = false;
+    for (const [id, summary] of open.entries()) {
+      if (cycle.openIdsBefore.has(id)) {
+        sameIdPersists = true;
+      } else if (closedIds.has(id) || closedSummaries.has(summary)) {
+        repeatedClosed = true;
+      }
+    }
+    cycles.push({
+      beforeSize: cycle.openBefore,
+      afterSize: openIdsAfter.size,
+      sameIdPersists,
+      repeatedClosed,
+    });
+  };
+  for (let index = 0; index < session.history.length; index++) {
+    const event = session.history[index];
     if (event.type === 'prepare') {
-      if (current && current.reports > 0) cycles.push({ openBefore: current.openBefore, openAfter: open.size });
-      current = { openBefore: open.size, reports: 0 };
+      if (current) pushCycle(current, undefined, true);
+      activeFloor = roundFloorForPrepare(session, index, event, options);
+      current = {
+        openBefore: open.size,
+        openIdsBefore: new Set(open.keys()),
+        reports: 0,
+        failedReports: 0,
+        floor: activeFloor,
+      };
+    } else if (event.type === 'regroup') {
+      cycles.length = 0;
+      current = null;
     } else if (event.type === 'report') {
-      if (!current) current = { openBefore: open.size, reports: 0 };
+      if (!current) {
+        current = {
+          openBefore: open.size,
+          openIdsBefore: new Set(open.keys()),
+          reports: 0,
+          failedReports: 0,
+          floor: activeFloor,
+        };
+      }
       current.reports += 1;
-      for (const finding of event.report.findings) if (finding.material) open.add(finding.id);
-      for (const id of event.report.closes) open.delete(id);
+      if (event.report.verdict === 'FAIL') current.failedReports += 1;
+      for (const finding of event.report.findings) if (finding.material) {
+        const normalized = normalizeSummary(finding.summary);
+        open.set(finding.id, normalized);
+        findingSummaries.set(finding.id, normalized);
+      }
+      for (const id of [...event.report.closes, ...(event.report.acceptsDefer ?? [])]) {
+        const summary = open.get(id) ?? findingSummaries.get(id);
+        open.delete(id);
+        closedIds.add(id);
+        if (summary) closedSummaries.add(summary);
+      }
     }
   }
-  if (current && current.reports >= Math.max(1, trailingFloor)) {
-    cycles.push({ openBefore: current.openBefore, openAfter: open.size });
-  }
+  if (current) pushCycle(current, trailingFloor, options.supersedeTrailing === true);
   let nonConvergingCycles = 0;
   for (let index = cycles.length - 1; index >= 0; index--) {
     const cycle = cycles[index];
-    if (cycle.openBefore > 0 && cycle.openAfter >= cycle.openBefore) nonConvergingCycles += 1;
+    const nonConverging = cycle.beforeSize > 0 && (
+      cycle.afterSize > cycle.beforeSize ||
+      (cycle.afterSize >= cycle.beforeSize && (cycle.sameIdPersists || cycle.repeatedClosed))
+    );
+    if (nonConverging) nonConvergingCycles += 1;
     else break;
   }
   const triggered = nonConvergingCycles >= 2;
@@ -163,7 +283,7 @@ export function cumulativeRepairPrefix(session) {
     end = index;
   }
 }
-export function coverageRequirement(session) {
+export function coverageRequirement(session, options = {}) {
   demand(digest(session.candidate) === digest(latestPrepare(session)?.candidate), 'candidate differs from history');
   const start = session.history.findLastIndex(event => event.type === 'prepare');
   const event = session.history[start]; demand(event, 'missing prepare');
@@ -178,7 +298,7 @@ export function coverageRequirement(session) {
     const prior = prefixSession(session, session.history[start - 1]?.type === 'rules' ? start - 1 : start);
     demand(edge.previous === digest(prior.history) && digest(edge.from) === digest({ base: prior.candidate.base, head: prior.candidate.head, tree: prior.candidate.tree }), 'coverage prefix differs');
     demand(digest(event.intent) === digest(latestIntent(prior)) && event.authorSessionId === latestPrepare(prior).authorSessionId, 'coverage intent or author changed');
-    const decision = verdict(prior, prior.candidate, event.at);
+    const decision = verdict(prior, prior.candidate, event.at, options);
     const cumulativeFrom = edge.proof?.cumulativeFrom;
     const repair = cumulativeFrom === undefined ? prior : cumulativeRepairPrefix(prior);
     demand(cumulativeFrom === undefined || (edge.kind === 'repair' && decision.code === 'needs_agent_review' && repair?.candidate.head === cumulativeFrom), 'cumulative repair prefix differs');
@@ -191,7 +311,7 @@ export function coverageRequirement(session) {
     } : prior.version === 2 && portable ? {
       earliest: Math.min(...currentReports(prior).filter(report => report.verdict === 'PASS').map(report => report.at)),
       expires: legacyReviewExpiry(prior), base: prior.candidate.base, paths: prior.candidate.changedPaths,
-    } : coverageState(prior);
+    } : coverageState(prior, options);
     if (!portable) demand(prior.candidate.rules?.version === 3, 'coverage policy changed');
     if (edge.kind === 'integration') {
       demand(candidate.integration && (portable || ['git', 'registry-union', 'derived', 'resolution'].includes(edge.proof?.kind)) && edge.proof.tree === candidate.tree, 'integration proof missing'); floor = 0; scope = edge.proof.kind;
@@ -199,10 +319,22 @@ export function coverageRequirement(session) {
     const delta = edge.kind === 'repair' ? edge.proof.paths : edge.proof.resolution;
     if (delta) {
       floor = deltaFloor(delta, edge.proof.modeChanged === true);
-      if (edge.kind === 'repair' && (priorFull || fullReviewReports(prior)) &&
-        edge.proof.modeChanged !== true &&
-        !delta.some(path => twoReviewerPath(path) && !(priorFull ? repair : prior).candidate.changedPaths.includes(path)) &&
-        floor !== 0) floor = 1;
+      const anchor = priorFull ? repair : prior;
+      const anchorFull = priorFull ?? fullReviewReports(prior);
+      if (edge.kind === 'repair' && anchorFull) {
+        const anchorHasPass = anchorFull.some(report => report.verdict === 'PASS');
+        const anchorProtected = anchor.candidate.modeChanged === true || anchor.candidate.changedPaths.some(twoReviewerPath);
+        const addsNewProtected = delta.some(path => twoReviewerPath(path) && !anchor.candidate.changedPaths.includes(path));
+        if (!anchorHasPass && anchorProtected) {
+          floor = 2;
+        } else if (edge.proof.modeChanged !== true && !addsNewProtected) {
+          if (floor === 0 && !decision.ok) floor = 1;
+          else if (floor !== 0) floor = 1;
+        }
+      }
+      if (edge.kind === 'integration' && edge.proof.reslotOverlap === true &&
+        edge.proof.derived === true && edge.proof.modeChanged !== true &&
+        delta.every(path => path.endsWith('.sql')) && floor !== 0) floor = 1;
       demand(deltaReports.every(report => report.delta === edge.delta), 'delta reviewer must confirm the exact delta');
       if (fullReports.length) {
         inherited = undefined; floor = candidateFloor(candidate, event.intent.risk); scope = 'full';
@@ -214,23 +346,23 @@ export function coverageRequirement(session) {
   }
   return { candidate, event, inherited, floor, reports, scope, deltaPaths, deltaDigest, modeChanged };
 }
-export function coverageState(session) {
-  const { candidate, inherited, floor, reports } = coverageRequirement(session);
+export function coverageState(session, options = {}) {
+  const { candidate, inherited, floor, reports } = coverageRequirement(session, options);
   demand(reports.length >= floor, `${floor} independent PASS reports required`, 'needs_agent_review');
   const earliest = inherited?.earliest ?? (reports.length ? Math.min(...reports.map(report => report.at)) : session.preparedAt);
   const expires = Math.min(inherited?.expires ?? Infinity, ...(reports.length ? reports.map(report => report.at + DAY) : [earliest + DAY]), candidate.integration?.expires ?? Infinity);
   return { earliest, expires, base: inherited?.base ?? candidate.base, paths: [...new Set([...(inherited?.paths ?? []), ...candidate.changedPaths])] };
 }
-const reviewExpiry = session => session.version === 3 ? coverageState(session).expires : legacyReviewExpiry(session);
-export function integrationReviewContext(session, observed, { parents, baseAncestor, mechanical = false }, now) {
-  if (!session || !verdict(session, session.candidate, now).ok || !baseAncestor ||
+const reviewExpiry = (session, options = {}) => session.version === 3 ? coverageState(session, options).expires : legacyReviewExpiry(session);
+export function integrationReviewContext(session, observed, { parents, baseAncestor, mechanical = false }, now, options = {}) {
+  if (!session || !verdict(session, session.candidate, now, options).ok || !baseAncestor ||
     digest(latestIntent(session)) !== digest(observed.intent) ||
     latestPrepare(session).authorSessionId !== observed.authorSessionId ||
     !Array.isArray(parents) || parents.length !== 2 || parents[0] !== session.candidate.head || parents[1] !== observed.base ||
     observed.base === session.candidate.base) return undefined;
-  return { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, expires: reviewExpiry(session), mechanical };
+  return { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, expires: reviewExpiry(session, options), mechanical };
 }
-export function prepareCandidate(session, observed, now, fresh = false) {
+export function prepareCandidate(session, observed, now, fresh = false, options = {}) {
   candidateValid(observed); demand(Number.isFinite(now), 'prepare time is invalid'); demand(observed.clean, 'commit source changes before prepare', 'dirty');
   for (const [field, value] of [['authorSessionId', observed.authorSessionId], ['intent.criteria', observed.intent?.criteria]]) {
     if (typeof value === 'string' && value.length > IDENTITY_LIMIT && value.trim())
@@ -247,7 +379,7 @@ export function prepareCandidate(session, observed, now, fresh = false) {
     }
   }
   if (observed.integration) {
-    const expected = integrationReviewContext(session, observed, { parents: [session?.candidate.head, observed.base], baseAncestor: true, mechanical: observed.integration.mechanical === true }, now);
+    const expected = integrationReviewContext(session, observed, { parents: [session?.candidate.head, observed.base], baseAncestor: true, mechanical: observed.integration.mechanical === true }, now, options);
     demand(!fresh && expected && digest(expected) === digest(observed.integration), 'integration coverage is invalid');
   }
   const { authorSessionId, intent: ignored, ...candidate } = observed;
@@ -260,7 +392,7 @@ export function prepareCandidate(session, observed, now, fresh = false) {
   next.history.push({ type: 'prepare', intent, candidate, authorSessionId, at: now });
   return next;
 }
-export function recordReport(session, report, now) {
+export function recordReport(session, report, now, options = {}) {
   stateValid(session);
   demand(report && identity(report.reviewer) && !authorIds(session).has(report.reviewer) && report.cold === true, 'reviewer must be cold and independent of the author');
   demand(identity(report.documentation), 'documentation assessment is required');
@@ -270,29 +402,75 @@ export function recordReport(session, report, now) {
   demand(report.tree === session.candidate.tree && ['PASS', 'FAIL'].includes(report.verdict), 'report tree or verdict differs');
   demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'report time is invalid');
   demand(Array.isArray(report.findings) && Array.isArray(report.closes), 'findings and closes must be arrays');
+  if (report.acceptsDefer !== undefined) {
+    demand(Array.isArray(report.acceptsDefer) && report.acceptsDefer.every(identity) && new Set(report.acceptsDefer).size === report.acceptsDefer.length, 'acceptsDefer must be an array of unique finding ids');
+    demand(report.verdict === 'PASS', 'acceptsDefer is only valid on PASS reports');
+  }
   const findingIds = new Set(report.findings.map(finding => finding.id));
   demand(report.findings.every(finding => identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean') && findingIds.size === report.findings.length, 'findings need unique stable ids, summaries and material flags');
   const prior = session.history.filter(event => event.type === 'report').flatMap(event => event.report.findings);
   demand(report.findings.every(finding => prior.every(old => old.id !== finding.id || digest(old) === digest(finding))), 'finding id changed meaning');
-  const { open, closedInCurrentRound } = findingState(session);
-  demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'closes must name open material findings');
+  const { open, pendingDefer, closedInCurrentRound, confirmedDefersInCurrentRound } = findingState(session, options);
+  const closesSet = new Set(report.closes);
+  demand(closesSet.size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'closes must name open material findings');
+  const acceptsDefer = report.acceptsDefer ?? [];
+  demand(acceptsDefer.every(id => !findingIds.has(id) && !closesSet.has(id) && (pendingDefer.has(id) || confirmedDefersInCurrentRound.has(id))), 'acceptsDefer must name pending deferred material findings');
   const next = structuredClone(session); next.history.push({ type: 'report', at: now, report: { ...report, at: now } }); return next;
 }
-function validateHistory(session) {
+export function deferFinding(session, { findingId, target, decision, reason }, now) {
+  stateValid(session);
+  demand(identity(findingId) && identity(target) && identity(decision) && identity(reason), 'defer requires findingId, target, decision, and reason');
+  demand(structuredDeferTarget(target), 'defer target must reference a structured issue, PR, doc anchor, milestone/plan, or slice ID');
+  demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'defer time is invalid');
+  const { open } = findingState(session);
+  demand(open.has(findingId), 'defer must name an open material finding');
+  const next = structuredClone(session);
+  next.history.push({ type: 'defer', at: now, findingId, target, decision, reason });
+  return next;
+}
+export function recordRegroup(session, summary, now) {
+  stateValid(session);
+  if (typeof summary === 'string' && summary.length > IDENTITY_LIMIT && summary.trim()) {
+    demand(false, `regroup summary is ${summary.length} characters (limit ${IDENTITY_LIMIT.toLocaleString('en-US')}); shorten it`);
+  }
+  demand(identity(summary), 'regroup requires a non-empty summary');
+  demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'regroup time is invalid');
+  const next = structuredClone(session);
+  next.history.push({ type: 'regroup', at: now, summary });
+  return next;
+}
+function validateHistory(session, options = {}) {
   let candidate; let enabled = false; const findings = new Map(); const open = new Set();
+  const pendingDefer = new Set();
   let openAtPrepare = new Set(); const closedInCurrentRound = new Set();
+  const confirmedDefersInCurrentRound = new Set();
   for (const event of session.history) {
-    demand(['prepare', 'report', 'continue', 'rules', 'renew'].includes(event.type), 'unknown history event');
+    demand(['prepare', 'report', 'continue', 'rules', 'renew', 'defer', 'regroup'].includes(event.type), 'unknown history event');
     if (event.type === 'rules') { demand(event.version === 3, 'unknown rules transition'); enabled = true; }
     if (event.type === 'prepare') {
       candidate = event.candidate; candidateValid(candidate); enabled ||= candidate.rules?.version === 3;
-      openAtPrepare = new Set(open); closedInCurrentRound.clear();
+      openAtPrepare = new Set(open); closedInCurrentRound.clear(); confirmedDefersInCurrentRound.clear();
+    }
+    if (event.type === 'regroup') {
+      demand(identity(event.summary), 'invalid historical regroup summary');
+      continue;
+    }
+    if (event.type === 'defer') {
+      const legacy = isLegacyDefer(candidate?.base, options);
+      demand(identity(event.findingId) && identity(event.target) && (legacy || structuredDeferTarget(event.target)) && identity(event.decision) && identity(event.reason) && open.has(event.findingId), 'invalid historical finding deferral');
+      open.delete(event.findingId);
+      if (!legacy) pendingDefer.add(event.findingId);
+      continue;
     }
     if (event.type !== 'report') continue;
     const report = event.report;
     if (enabled) demand(identity(report.documentation), 'documentation assessment is required');
     demand(candidate && report.tree === candidate.tree && report.at === event.at && ['PASS', 'FAIL'].includes(report.verdict) &&
       Array.isArray(report.findings) && Array.isArray(report.closes), 'report differs from its historical candidate');
+    if (report.acceptsDefer !== undefined) {
+      demand(Array.isArray(report.acceptsDefer) && report.acceptsDefer.every(identity) &&
+        new Set(report.acceptsDefer).size === report.acceptsDefer.length && report.verdict === 'PASS', 'invalid historical acceptsDefer');
+    }
     const findingIds = new Set();
     for (const finding of report.findings) {
       demand(identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean' &&
@@ -300,12 +478,21 @@ function validateHistory(session) {
       findings.set(finding.id, finding);
       findingIds.add(finding.id);
     }
-    demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'invalid historical finding closure');
-    for (const finding of report.findings) if (finding.material) { open.add(finding.id); closedInCurrentRound.delete(finding.id); }
+    const closesSet = new Set(report.closes);
+    demand(closesSet.size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'invalid historical finding closure');
+    const acceptsDefer = report.acceptsDefer ?? [];
+    demand(acceptsDefer.every(id => !findingIds.has(id) && !closesSet.has(id) && (pendingDefer.has(id) || confirmedDefersInCurrentRound.has(id))), 'invalid historical acceptsDefer');
+    for (const finding of report.findings) if (finding.material) {
+      open.add(finding.id);
+      pendingDefer.delete(finding.id);
+      closedInCurrentRound.delete(finding.id);
+      confirmedDefersInCurrentRound.delete(finding.id);
+    }
     for (const id of report.closes) { open.delete(id); if (openAtPrepare.has(id)) closedInCurrentRound.add(id); }
+    for (const id of acceptsDefer) { pendingDefer.delete(id); confirmedDefersInCurrentRound.add(id); }
   }
 }
-function validateSessionReports(session, now) {
+function validateSessionReports(session, now, options = {}) {
   const identities = authorIds(session);
   const round = new Set();
   for (const event of session.history) {
@@ -316,28 +503,32 @@ function validateSessionReports(session, now) {
     if (session.version === 2) identities.add(event.report.reviewer);
   }
   demand(session.history.every((event, index) => Number.isFinite(event.at) && event.at <= now && (index === 0 || event.at >= session.history[index - 1].at)), 'history time is invalid');
-  if (session.version === 3) validateHistory(session);
+  if (session.version === 3) validateHistory(session, options);
 }
-export function verdict(session, observed, now) {
+export function verdict(session, observed, now, options = {}) {
   try {
     stateValid(session); candidateValid(observed); demand(Number.isFinite(now), 'verification time is invalid');
     if (!observed.clean) return result(false, 'dirty', 'commit source changes before verification');
     if (['base', 'head', 'tree'].some(key => session.candidate[key] !== observed[key])) return result(false, 'stale', 'candidate changed; prepare and re-review');
-    validateSessionReports(session, now);
+    validateSessionReports(session, now, options);
     if (session.version === 3) {
-      coverageState(session);
-      if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
+      coverageState(session, options);
+      const { open, pendingDefer } = findingState(session, options);
+      if (open.size) return result(false, 'needs_agent_review', 'close every material finding');
+      if (pendingDefer.size) return result(false, 'needs_agent_review', 'confirm every deferred material finding in a cold PASS report (acceptsDefer)');
       return result(true, 'reviewed', 'reviewed');
     }
     const reports = currentReports(session).filter(report => report.verdict === 'PASS');
     const floor = Math.max(legacyRequiredReviewers(legacyClassifyRisk(observed, latestIntent(session).risk)), session.candidate.integration ? 2 : 0);
     if (reports.length < floor) return result(false, 'needs_agent_review', `${floor} independent PASS reports required`);
     if (reports.some(report => report.at > now)) return result(false, 'invalid', 'report is from the future');
-    if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
+    const { open, pendingDefer } = findingState(session, options);
+    if (open.size) return result(false, 'needs_agent_review', 'close every material finding');
+    if (pendingDefer.size) return result(false, 'needs_agent_review', 'confirm every deferred material finding in a cold PASS report (acceptsDefer)');
     return result(true, 'reviewed', 'reviewed');
   } catch (error) { return result(false, error.message.startsWith('needs_agent_review:') ? 'needs_agent_review' : 'invalid', error.message); }
 }
-export function explainSession(session, observed = session?.candidate, now = Date.now()) {
+export function explainSession(session, observed = session?.candidate, now = Date.now(), options = {}) {
   stateValid(session); candidateValid(session.candidate); demand(Number.isFinite(now), 'verification time is invalid');
   const hasObserved = Boolean(observed && !observed.error && ['base', 'head', 'tree'].every(key => SHA.test(observed[key])) && Array.isArray(observed.changedPaths));
   const stale = hasObserved ? ['base', 'head', 'tree'].some(key => session.candidate[key] !== observed[key]) : null;
@@ -347,9 +538,9 @@ export function explainSession(session, observed = session?.candidate, now = Dat
   let floor; let reports = []; let scope; let deltaPaths; let deltaDigest; let modeChanged = Boolean(session.candidate.modeChanged);
   let effectiveRisk; let twoReviewerPaths; let invalidReason;
   try {
-    validateSessionReports(session, now);
+    validateSessionReports(session, now, options);
     if (session.version === 3) {
-      ({ floor, reports, scope, deltaPaths, deltaDigest, modeChanged } = coverageRequirement(session));
+      ({ floor, reports, scope, deltaPaths, deltaDigest, modeChanged } = coverageRequirement(session, options));
       effectiveRisk = classifyRisk(session.candidate, intent.risk);
       twoReviewerPaths = (deltaPaths ?? session.candidate.changedPaths ?? []).filter(twoReviewerPath);
     } else {
@@ -368,10 +559,13 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     twoReviewerPaths = (session.candidate.changedPaths ?? []).filter(session.version === 3 ? twoReviewerPath : sensitivePath);
   }
   let openMaterial = null;
+  let unconfirmedDefers = null;
   let regroupAdvisory = null;
   try {
-    openMaterial = [...openFindings(session).values()];
-    regroupAdvisory = computeRegroupAdvisory(session, floor);
+    const findings = findingState(session, options);
+    openMaterial = [...findings.open.values()];
+    unconfirmedDefers = [...findings.pendingDefer.values()];
+    regroupAdvisory = computeRegroupAdvisory(session, floor, options);
   } catch (error) { invalidReason ??= error.message; }
   const missingReports = Math.max(0, floor - reports.length);
   const edge = session.version === 3 ? session.candidate.coverage : undefined;
@@ -391,21 +585,24 @@ export function explainSession(session, observed = session?.candidate, now = Dat
   const status = invalidReason || candidateStatus === 'unreadable' ? 'invalid'
     : candidateStatus === 'dirty' ? 'dirty'
       : candidateStatus === 'stale' ? 'stale'
-        : missingReports > 0 || openMaterial?.length ? 'needs_agent_review' : 'verify_required';
+        : missingReports > 0 || openMaterial?.length || unconfirmedDefers?.length ? 'needs_agent_review' : 'verify_required';
   const nextAction = candidateStatus === 'unreadable'
     ? `Resolve the Git comparison or OPENLUP_STACK_BASE error (${observed?.error ?? 'candidate unreadable'}) before running prepare or verify.`
     : candidateStatus === 'dirty'
       ? 'Commit or discard working-tree changes before running prepare, record or verify.'
       : candidateStatus === 'stale'
-        ? 'Run node scripts/agent-review-session.mjs prepare with the existing intent for a descendant HEAD. For rebased history use prepare --new with that intent and obtain a full review.'
+        ? (session.version === 3 && regroupAdvisory?.triggered && observed?.base === session.candidate.base
+          ? 'Run node scripts/agent-review-session.mjs regroup --summary "<root cause and new approach>" before running prepare for a descendant HEAD (or prepare --new for rebased history).'
+          : 'Run node scripts/agent-review-session.mjs prepare with the existing intent for a descendant HEAD. For rebased history use prepare --new with that intent and obtain a full review.')
         : invalidReason
           ? `Fix invalid session state (${invalidReason}) or run node scripts/agent-review-session.mjs prepare --new .context/scratch/agent-review/intent.json.`
-          : missingReports > 0 || openMaterial?.length
+          : missingReports > 0 || openMaterial?.length || unconfirmedDefers?.length
             ? [
                 missingReports > 0
                   ? `Record ${missingReports} independent cold PASS report(s) (${coverage?.ordinaryAllowed ? `ordinary: true, delta: ${coverage.delta}` : `full tree ${session.candidate.tree}`}) with node scripts/agent-review-session.mjs record <report.json>`
                   : null,
                 openMaterial?.length ? `close open material finding(s): ${openMaterial.map(finding => finding.id).join(', ')}` : null,
+                unconfirmedDefers?.length ? `confirm deferred material finding(s) via acceptsDefer in a cold PASS report: ${unconfirmedDefers.map(item => item.id).join(', ')}` : null,
               ].filter(Boolean).join(' and ') + '.'
             : 'Run node scripts/agent-review-session.mjs verify to confirm the local review evidence.';
   return {
@@ -435,6 +632,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
       twoReviewerPaths, modeChanged,
     },
     openFindings: openMaterial,
+    unconfirmedDefers,
     regroupAdvisory,
     coverage,
     nextAction,
@@ -446,26 +644,29 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     mergePreflight: { status: 'not_checked', checkedBy: 'receipt' },
   };
 }
-export function receiptSummary(session, pr, now) {
-  const decision = verdict(session, session.candidate, now); demand(decision.ok, decision.reason, decision.code);
+export function receiptSummary(session, pr, now, options = {}) {
+  const decision = verdict(session, session.candidate, now, options); demand(decision.ok, decision.reason, decision.code);
   demand(Number.isSafeInteger(pr) && pr > 0, 'PR number is invalid');
   const reports = currentReports(session).filter(report => report.verdict === 'PASS');
   if (session.version === 3) {
     const summary = { version: 3, pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree,
-      risk: classifyRisk(session.candidate, latestIntent(session).risk), verdict: 'PASS', expires: reviewExpiry(session),
+      risk: classifyRisk(session.candidate, latestIntent(session).risk), verdict: 'PASS', expires: reviewExpiry(session, options),
       sessionDigest: digest(session), session };
     demand(Buffer.byteLength(JSON.stringify(summary)) <= 1024 * 1024 - 128, 'receipt exceeds bounded transport'); return summary;
   }
-  return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: session.candidate.integration ? 'behavior' : legacyClassifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: reviewExpiry(session), sessionDigest: digest(session) };
+  return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: session.candidate.integration ? 'behavior' : legacyClassifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: reviewExpiry(session, options), sessionDigest: digest(session) };
 }
 const displayCell = value => String(value).slice(0, 80).replace(/[^a-zA-Z0-9.:_-]/gu, '?');
-function receiptDisplay(summary) {
-  const { floor, reports, scope } = coverageRequirement(summary.session);
+function receiptDisplay(summary, options = {}) {
+  const { floor, reports, scope } = coverageRequirement(summary.session, options);
   const rows = reports.map(report => {
     const closes = report.closes.map(displayCell).join(', ').slice(0, 80);
     return `| ${displayCell(report.reviewer)} | ${displayCell(report.verdict)} | ${report.ordinary === true ? 'delta' : 'full'} | ${closes || 'none'} |`;
   });
-  const open = [...openFindings(summary.session).keys()].map(displayCell).join(', ');
+  const open = [...openFindings(summary.session, options).keys()].map(displayCell).join(', ');
+  const deferred = [...findingState(summary.session, options).deferred.values()]
+    .map(item => `${displayCell(item.id)} to ${displayCell(item.target)} · ${displayCell(item.decision)}`)
+    .join(', ');
   return [
     `PR #${displayCell(summary.pr)} · Head ${displayCell(summary.head.slice(0, 7))} · Tree ${displayCell(summary.tree.slice(0, 7))} · Verdict ${displayCell(summary.verdict)} · Reviewer floor ${displayCell(floor)} · Scope ${displayCell(scope)}`,
     '',
@@ -474,13 +675,14 @@ function receiptDisplay(summary) {
     ...rows,
     '',
     `Open cards: ${open || 'none'}`,
+    ...(deferred ? [`Deferred cards: ${deferred}`] : []),
   ].join('\n');
 }
-export function receiptBody(summary) {
+export function receiptBody(summary, options = {}) {
   const json = JSON.stringify(summary);
   if (summary.version !== 3) return `${RECEIPT_MARKER}\n\`\`\`json\n${json}\n\`\`\``;
   const payload = gzipSync(json).toString('base64');
-  const compressed = `${COMPRESSED_RECEIPT_MARKER}\n\n${receiptDisplay(summary)}\n\n${RECEIPT_DETAILS_HEADER}\n\n\`\`\`text\n${payload}\n\`\`\`\n\n</details>`;
+  const compressed = `${COMPRESSED_RECEIPT_MARKER}\n\n${receiptDisplay(summary, options)}\n\n${RECEIPT_DETAILS_HEADER}\n\n\`\`\`text\n${payload}\n\`\`\`\n\n</details>`;
   const limit = 200_000;
   demand(compressed.length <= limit, `compressed receipt is ${compressed.length} characters (limit ${limit}). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   return compressed;
@@ -492,7 +694,12 @@ export function admit({ receipt, observed, now }) {
       demand(receipt.session?.version === 3 && digest(receipt.session) === receipt.sessionDigest, 'v3 history digest differs');
       // Risk classification and expiry are legacy summary metadata; exact source and history still bind admission.
       demand(RISKS.includes(receipt.risk) && Number.isFinite(receipt.expires), 'v3 summary metadata is invalid');
-      const expected = receiptSummary(receipt.session, receipt.pr, now); demand(Object.keys(expected).filter(key => !['risk', 'expires'].includes(key)).every(key => digest(expected[key]) === digest(receipt[key])), 'v3 summary differs');
+      const deferOptions = {
+        ...(observed?.legacyDefer === true ? { legacyDefer: true } : {}),
+        ...(observed?.legacyDeferBases ? { legacyDeferBases: observed.legacyDeferBases } : {}),
+      };
+      const expected = receiptSummary(receipt.session, receipt.pr, now, deferOptions);
+      demand(Object.keys(expected).filter(key => !['risk', 'expires'].includes(key)).every(key => digest(expected[key]) === digest(receipt[key])), 'v3 summary differs');
       demand(observed.baseValid && ['base', 'head', 'tree', 'pr'].every(key => receipt[key] === observed[key]), 'v3 live identity differs');
       if (observed.changedPaths) demand(digest(observed.changedPaths) === digest(receipt.session.candidate.changedPaths) && observed.modeChanged === receipt.session.candidate.modeChanged, 'v3 actual diff differs');
       return result(true, 'reviewed', 'reviewed');

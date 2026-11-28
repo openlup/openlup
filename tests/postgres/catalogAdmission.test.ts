@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -914,6 +914,7 @@ it("accepts a stored subscription draft from a writer role without resolver exec
       GRANT UPDATE ON public.commerce_order_draft_receipts TO stored_price_writer;
       GRANT EXECUTE ON FUNCTION ${draftWriter}, public.catalog_admission_check_legacy_draft(text,jsonb,uuid,boolean),
         public.catalog_admission_replay_order_draft(text,uuid,text,text),
+        public.catalog_admission_is_governed(jsonb,jsonb),
         public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders),
         public.catalog_admission_guard_purchase_item(public.commerce_order_items) TO stored_price_writer;
       SET LOCAL ROLE stored_price_writer`);
@@ -1056,6 +1057,283 @@ it("upgrades only the retired-base resolver and recovers the original draft pric
   });
 }, postgresSetupTimeoutMs);
 
+const editOwned = [
+  derivedResolver,
+  "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+  "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+  "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+];
+const editReader = "public.catalog_admission_derived_subscription_prices(uuid,text,uuid,integer,timestamptz)";
+
+async function compareIssuedClaims(db: PoolClient, issued: string, seed: Awaited<ReturnType<typeof seedDerived>>) {
+  const { subject, snapshot, baseId, policy } = seed;
+  const { rows: [clock] } = await db.query(`WITH t AS (SELECT date_trunc('milliseconds', now()) AS f)
+    SELECT f::text AS floor,(f+interval '1 microsecond')::text AS after_floor,
+      (f-interval '1 hour')::text AS cutover,(f-interval '1 hour 1 microsecond')::text AS before_cutover,
+      (f-interval '2 hours')::text AS historical FROM t`);
+  const noClaims = moneySnapshot(subject, 110);
+  const mixed = structuredClone(snapshot);
+  mixed.quote.lines.unshift(noClaims.quote.lines[0]!);
+  const vectors: { label: string; quote: pricing.CreateQuoteResponse; draft: ReturnType<typeof writerDraft>; at: string; expected: (number | null)[] | null }[] = [];
+  const vector = (label: string, quote: pricing.CreateQuoteResponse, expected: (number | null)[] | null, at = clock.historical,
+    draft = writerDraft(quote)) => vectors.push({ label, quote, draft, at, expected });
+  async function compare() {
+    await db.query("SAVEPOINT compare_issued");
+    await db.query(issued);
+    const results: ((number | null)[] | null)[] = [];
+    for (const { quote, draft, at } of vectors) results.push((await db.query(
+      `SELECT ${derivedResolver.split("(")[0]}($1,$2,$3,$4) AS units`, [quote.quote.currency, quote, draft, at])).rows[0].units);
+    await db.query("ROLLBACK TO SAVEPOINT compare_issued");
+    await db.query("RELEASE SAVEPOINT compare_issued");
+    for (const [index, { label, quote, draft, at, expected }] of vectors.entries()) {
+      const actual = (await db.query(`SELECT ${derivedResolver.split("(")[0]}($1,$2,$3,$4) AS units`,
+        [quote.quote.currency, quote, draft, at])).rows[0].units;
+      expect(results[index], label).toEqual(expected);
+      expect(actual, label).toEqual(expected);
+    }
+    vectors.length = 0;
+  }
+  vector("no claims", noClaims, null);
+  vector("positional claims", mixed, [null, 110]);
+  vector("draft-only claim", noClaims, [null], clock.historical, writerDraft(snapshot));
+  vector("quote-only claim", snapshot, [null], clock.historical, writerDraft(noClaims));
+  for (const side of ["draft", "quote"] as const) {
+    for (const field of ["identity", "unit", "subtotal"] as const) {
+      const quote = structuredClone(snapshot), draft = writerDraft(snapshot);
+      const line = side === "draft" ? draft.lines[0]! : quote.quote.lines[0]!;
+      if (field === "identity") line.catalogFacts!.skuId = randomUUID();
+      else if (field === "unit") line.unitPriceGross.amountMinor++;
+      else line.lineSubtotalGross.amountMinor++;
+      vector(`${side} ${field} mismatch`, quote, [null], clock.historical, draft);
+    }
+  }
+  await compare();
+
+  await db.query("SAVEPOINT replacement");
+  await closeBase(db, baseId, clock.cutover);
+  const successor = await addPrice(db, subject, 230, "one_time", 1, "gross", clock.cutover);
+  const next = derivedSnapshot(subject, successor, 230, policy, clock.cutover, 210);
+  vector("retired at T minus one microsecond", snapshot, [110], clock.before_cutover);
+  vector("retired at T", snapshot, [null], clock.cutover);
+  vector("successor at T minus one microsecond", next, [null], clock.before_cutover);
+  vector("successor at T", next, [210], clock.cutover);
+  await compare();
+  await db.query("ROLLBACK TO SAVEPOINT replacement");
+  await db.query("RELEASE SAVEPOINT replacement");
+
+  for (const [end, eligible] of [[clock.floor, true], [clock.after_floor, false]] as const) {
+    await db.query("SAVEPOINT floor_candidate");
+    await closeBase(db, baseId, end);
+    await addPrice(db, subject, 230, "one_time", 1, "gross", end);
+    vector("retired candidate at the floor boundary", snapshot, [eligible ? 110 : null]);
+    await compare();
+    await db.query("ROLLBACK TO SAVEPOINT floor_candidate");
+    await db.query("RELEASE SAVEPOINT floor_candidate");
+
+    await db.query("SAVEPOINT floor_competitor");
+    const other = await addPrice(db, subject, 125, "one_time", 1, "net");
+    vector("active net competitor", snapshot, [null]);
+    await compare();
+    await closeBase(db, other, end);
+    await addPrice(db, subject, 230, "one_time", 1, "gross", end);
+    vector("retired net competitor at the floor boundary", snapshot, [eligible ? null : 110]);
+    await compare();
+    await db.query("ROLLBACK TO SAVEPOINT floor_competitor");
+    await db.query("RELEASE SAVEPOINT floor_competitor");
+  }
+}
+
+it("upgrades derived edit pricing in place and preserves the issued claims contract", async () => {
+  const manifestPath = "config/platform-migration-manifest.json";
+  const current = JSON.parse(readFileSync(manifestPath, "utf8")) as PlatformMigrationManifest;
+  if (current.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  const prefix = structuredClone(current), through = structuredClone(current);
+  const boundaries = [current, current.qualified, current.qualifiedAdmin].map((plan, index) => {
+    const entries = plan.forward.filter(unit => unit.file.endsWith("_subscription_edit_derived_prices.sql"));
+    expect(entries).toHaveLength(1);
+    const cut = plan.forward.indexOf(entries[0]!);
+    expect(cut).toBeGreaterThan(0);
+    [prefix, prefix.qualified, prefix.qualifiedAdmin][index]!.forward = plan.forward.slice(0, cut);
+    [through, through.qualified, through.qualifiedAdmin][index]!.forward = plan.forward.slice(0, cut + 1);
+    return entries[0]!.file;
+  });
+  const [forward] = boundaries;
+  expect(boundaries).toEqual([forward, forward, forward]);
+  const unchangedFunctions = ["subscription_command_apply", "subscription_package_edit_apply", "subscription_line_edit_apply",
+    "subscription_sized_edit_apply", "subscription_claim_due_renewal", "customer_support_apply_subscription_action_v1",
+    "commerce_create_order_draft_with_outbox", "commerce_create_promoted_order_draft_with_outbox",
+    "catalog_derive_subscription_unit_price"];
+  const sources = async (db: Pool) => (await db.query(`SELECT proname,pg_get_function_identity_arguments(p.oid) AS args,prosrc
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname=ANY($1::text[])
+    ORDER BY 1,2`, [unchangedFunctions])).rows;
+  const metadata = async (db: Pool) => (await db.query(`SELECT name,to_jsonb(p)-'prosrc'-'proargdefaults' AS attributes,
+      pg_get_expr(p.proargdefaults,0) AS arg_defaults,pg_get_functiondef(p.oid) AS definition FROM unnest($1::text[]) AS name
+      LEFT JOIN pg_proc p ON p.oid=to_regprocedure(name) ORDER BY name`, [[...editOwned, editReader]])).rows;
+
+  await withPlatformCatalog(prefix, async root => {
+    const store = await installAccountMutations("bootstrap", true, "edit-price-upgrade", root);
+    const { owner, runtime } = store;
+    try {
+      const before = await metadata(owner), untouched = await sources(owner);
+      expect(before.find(row => row.name === editReader)?.attributes).toBeNull();
+      expect(untouched.filter(row => row.proname === "subscription_command_apply")).toHaveLength(2);
+      expect(new Set(untouched.map(row => row.proname))).toEqual(new Set(unchangedFunctions));
+      const original = new Map<string, string>(before.map(row => [row.name, row.definition]));
+      const setup = async (currency: string, stored?: number) => {
+        const seeded = await seedDerived(owner, currency), { subject } = seeded;
+        const { listId, skuId } = subject;
+        const entry = stored === undefined ? undefined : await addPrice(owner, subject, stored, "subscription");
+        const client = randomUUID(), principal = randomUUID(), subscription = randomUUID(), key = randomUUID();
+        await owner.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,$2,$3)",
+          [client, `${client}@example.invalid`, principal]);
+        await owner.query(`INSERT INTO public.subscriptions(id,client_id,status,cadence_days,edit_window_hours,next_cycle_at,price_list_id,currency_code)
+          VALUES($1,$2,'active',28,24,now()+interval '30 days',$3,$4)`, [subscription, client, listId, currency]);
+        await owner.query(`INSERT INTO public.subscription_renewal_terms
+          (subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
+          VALUES($1,$2,'fixture-stock','sandbox',now(),'fixture-authorization')`, [subscription, currency]);
+        await owner.query(`INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
+          VALUES($1,1,$2,1,95)`, [subscription, subject.sku]);
+        await owner.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+          VALUES($1,$2,1,0,false,95,$3)`, [subscription, skuId, currency]);
+        if (stored === 0) {
+          await owner.query(`WITH purchase AS (
+            INSERT INTO public.commerce_orders(client_id,status,currency_code,total_amount_minor)
+            VALUES($1,'paid',$2,95) RETURNING id
+          ), items AS (
+            INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+            SELECT id,1,1,95,95 FROM purchase RETURNING order_id
+          )
+          INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at)
+          SELECT order_id,$3,jsonb_build_object('templateId','fixture','shippingAmountMinor',0),now() FROM items`,
+          [client, currency, subscription]);
+        }
+        await owner.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [subscription]);
+        const lines = [{ variantId: skuId, qty: 2 }];
+        const payload = { coreLines: lines, expectedTemplateVersion: 1, compositionConstraint: {} };
+        const actor = <T>(run: (db: PoolClient) => Promise<T>) => transaction(owner, async db => {
+          await db.query("SET LOCAL ROLE authenticated");
+          await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: principal, role: "authenticated" })]);
+          return run(db);
+        });
+        const result = async (db: Pool | PoolClient, sql: string, args: unknown[]) => (await db.query(sql, args)).rows[0].answer;
+        const actorArgs = [subscription, key, JSON.stringify(lines), "[]", "{}", 28, 1];
+        const actorPreviewSql = "SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3,$4,$5,$6,$7)->'preview' AS answer";
+        const commandSql = "SELECT public.subscription_command_preview($1,$2,$3,$4,'update_package_template',$5,$6) AS answer";
+        const commandArgs = [principal, client, key, subscription, payload, await dbInstant(owner)];
+        return { seeded, entry, subscription, principal,
+          actorPreview: () => actor(db => result(db, actorPreviewSql, actorArgs)),
+          actorApply: (hash: string) => actor(db => result(db, `SELECT public.customer_subscription_apply_bundle_as_actor(
+            $1,$2,$3,$4,$5,$6,$7,$8)->'subscriptionAction' AS answer`, [...actorArgs.slice(0, 2), hash, ...actorArgs.slice(2)])),
+          commandPreview: () => result(runtime, commandSql, commandArgs),
+          commandApply: async (hash: string) => result(runtime, `SELECT public.subscription_command_apply(
+            $1,$2,$3,$4,'update_package_template',$5,$6) AS answer`,
+          [...commandArgs.slice(0, 4), { ...payload, acceptedQuoteHash: hash }, await dbInstant(owner)]),
+          previewIn: (db: PoolClient, path: "actor" | "command") =>
+            path === "actor" ? result(db, actorPreviewSql, actorArgs) : result(db, commandSql, commandArgs),
+          state: async () => (await owner.query(`SELECT next_cycle_at::text AS anchor,template_version AS version,
+            ARRAY(SELECT to_jsonb(t) FROM public.subscription_renewal_terms t WHERE t.subscription_id=s.id) AS header,
+            (SELECT purchase_facts FROM public.subscription_renewal_attachments a WHERE a.subscription_id=s.id) AS purchase_facts,
+            ARRAY(SELECT to_jsonb(l) FROM public.subscription_renewal_term_lines l WHERE l.subscription_id=s.id ORDER BY line_ordinal) AS lines,
+            ARRAY(SELECT to_jsonb(l) FROM public.subscription_lines l WHERE l.subscription_id=s.id ORDER BY sort_order) AS template,
+            ARRAY(SELECT to_jsonb(q) FROM public.subscription_edit_quotes q WHERE q.subscription_id=s.id ORDER BY id) AS quotes,
+            ARRAY(SELECT to_jsonb(e) FROM public.subscription_events e WHERE e.subscription_id=s.id ORDER BY id) AS events,
+            ARRAY(SELECT to_jsonb(r) FROM public.subscription_command_receipts r WHERE r.subscription_id=s.id ORDER BY id) AS receipts
+            FROM public.subscriptions s WHERE id=$1`, [subscription])).rows[0],
+        };
+      };
+      const actor = await setup("XFI", 133), command = await setup("XFJ", 133), zero = await setup("XFK", 0);
+      const freshActor = await setup("XFL"), freshCommand = await setup("XFM");
+      const actorQuote = await actor.actorPreview(), commandQuote = await command.commandPreview(), zeroQuote = await zero.actorPreview();
+      expect(actorQuote).toMatchObject({ canApply: true, newTotal: { currency: "XFI", amountMinor: 266 } });
+      expect(commandQuote).toMatchObject({ status: "previewed", canApply: true, newTotalMinor: 266 });
+      expect(zeroQuote).toMatchObject({ canApply: true, newTotal: { currency: "XFK", amountMinor: 0 } });
+      const actorBefore = await actor.state(), commandBefore = await command.state(), zeroBefore = await zero.state();
+      await owner.query("UPDATE public.price_entries SET active=false WHERE id=ANY($1::uuid[])", [[actor.entry, command.entry]]);
+      const unavailable = { code: "22023", message: "subscription_edit_catalog_unavailable" };
+      const commandUnavailable = { status: "refused", reason: unavailable.message, canApply: false };
+      await expect(actor.actorPreview()).rejects.toMatchObject(unavailable);
+      expect(await command.commandPreview()).toEqual(commandQuote);
+      await expect(freshActor.actorPreview()).rejects.toMatchObject(unavailable);
+      expect(await freshCommand.commandPreview()).toEqual(commandUnavailable);
+      const revertActor = await setup("XFN"), revertCommand = await setup("XFO"), upgradedCommand = await setup("XFP");
+
+      expect((await store.runner.apply()).applied.slice(0, 1)).toEqual([forward]);
+      const installed = await metadata(owner);
+      for (const signature of editOwned) {
+        expect(installed.find(row => row.name === signature)?.attributes).toEqual(before.find(row => row.name === signature)?.attributes);
+        expect(installed.find(row => row.name === signature)?.arg_defaults).toEqual(before.find(row => row.name === signature)?.arg_defaults);
+        expect(installed.find(row => row.name === signature)?.definition).not.toBe(original.get(signature));
+      }
+      if (current.forward.length === through.forward.length) expect(await sources(owner)).toEqual(untouched);
+      else await withPlatformCatalog(through, async throughRoot => {
+        const boundary = await installAccountMutations("bootstrap", true, "edit-price-boundary", throughRoot);
+        try { expect(await sources(boundary.owner)).toEqual(untouched); } finally { await boundary.close(); }
+      });
+
+      const typedCall = "SELECT unit_price_minor FROM public.catalog_admission_derived_subscription_prices($1,$2,$3,$4,$5)";
+      const { subject } = freshActor.seeded;
+      const typedArgs = [subject.listId, subject.currency, subject.skuId, 2, await dbInstant(owner)];
+      expect((await runtime.query(typedCall, typedArgs)).rows).toEqual([{ unit_price_minor: 110 }]);
+      expect((await owner.query(writerPrivilegesSql, [[editReader], []])).rows).toMatchObject([
+        { public: false, anon: false, authenticated: false, service: true, prosecdef: true, provolatile: "s",
+          proconfig: ["search_path=pg_catalog, pg_temp"] },
+      ]);
+      for (const role of ["anon", "authenticated"]) {
+        await expect(transaction(owner, async db => {
+          await db.query(`SET LOCAL ROLE ${role}`);
+          await db.query(typedCall, typedArgs);
+        })).rejects.toMatchObject({ code: "42501", message: "permission denied for function catalog_admission_derived_subscription_prices" });
+      }
+
+      expect(await freshActor.actorPreview()).toMatchObject({ canApply: true, newTotal: { amountMinor: 220, currency: "XFL" } });
+      expect(await upgradedCommand.commandPreview()).toMatchObject({ canApply: true, newTotalMinor: 220 });
+      expect(await actor.actorPreview()).toEqual(actorQuote);
+      expect(await command.commandPreview()).toEqual(commandQuote);
+      expect(await actor.state()).toEqual(actorBefore);
+      expect(await command.state()).toEqual(commandBefore);
+      expect(await zero.actorPreview()).toEqual({ ...zeroQuote, canApply: false });
+      await expect(zero.actorApply(zeroQuote.quoteHash)).rejects.toMatchObject(unavailable);
+      expect(await zero.state()).toEqual(zeroBefore);
+      expect(zeroBefore.quotes).toMatchObject([{ status: "previewed", accepted_event_id: null }]);
+      expect(zeroBefore.purchase_facts).toMatchObject({ shippingAmountMinor: 0 });
+      expect(zeroBefore.lines).toMatchObject([{ unit_amount_minor: 95 }]);
+
+      for (const [f, saved, apply, currency] of [
+        [actor, actorBefore, () => actor.actorApply(actorQuote.quoteHash), "XFI"],
+        [command, commandBefore, () => command.commandApply(commandQuote.quoteHash), "XFJ"],
+      ] as const) {
+        const applied = await apply(), after = await f.state();
+        expect(applied).toMatchObject({ status: "applied", templateVersion: 2, eventId: expect.any(String) });
+        expect(after).toMatchObject({ anchor: saved.anchor, version: 2, header: [{ currency_code: currency }],
+          lines: [{ sku: f.seeded.subject.sku, quantity: 2, unit_amount_minor: 133 }],
+          quotes: [{ id: saved.quotes[0].id, quote_hash: saved.quotes[0].quote_hash, accepted_event_id: applied.eventId }] });
+        expect(after.events).toHaveLength(saved.events.length + 1);
+        if (f === command) expect(after.receipts).toMatchObject([{ id: saved.receipts[0].id, result: expect.objectContaining({ eventId: applied.eventId }) }]);
+        await replaceBase(owner, f.seeded.subject, f.seeded.baseId, 230);
+        expect(await apply()).toMatchObject({ status: "replayed", templateVersion: 2, eventId: applied.eventId });
+        expect(await f.state()).toEqual(after);
+      }
+
+      const db = await owner.connect();
+      try {
+        await db.query("BEGIN");
+        await db.query("SAVEPOINT revert_edit");
+        await db.query(original.get(editOwned[1]!)!);
+        await db.query(original.get(editOwned[2]!)!);
+        await db.query("SET LOCAL ROLE service_role");
+        expect(await revertCommand.previewIn(db, "command")).toEqual(commandUnavailable);
+        await db.query("RESET ROLE");
+        await db.query("SET LOCAL ROLE authenticated");
+        await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: revertActor.principal, role: "authenticated" })]);
+        await expect(revertActor.previewIn(db, "actor")).rejects.toMatchObject(unavailable);
+        await db.query("ROLLBACK TO SAVEPOINT revert_edit");
+        await db.query("RELEASE SAVEPOINT revert_edit");
+        await compareIssuedClaims(db, original.get(derivedResolver)!, freshActor.seeded);
+      } finally { await db.query("ROLLBACK"); db.release(); }
+    } finally { await store.close(); }
+  });
+}, postgresSetupTimeoutMs);
+
 it("keeps rounding parity with quote and preview amounts and readiness signs", async () => {
   const { owner } = env;
   const vectors = [
@@ -1093,3 +1371,144 @@ it("keeps rounding parity with quote and preview amounts and readiness signs", a
     await owner.query("UPDATE public.commerce_settings SET value_text='XXX' WHERE key='settlement_currency'");
   }
 });
+
+function findGovernedDraftOwnerForward(): string {
+  const directory = "db/platform/migrations";
+  const suffix = "_catalog_governed_draft_owner.sql";
+  const matches = readdirSync(directory, { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith(suffix));
+  const [match] = matches;
+  if (!match || matches.length !== 1) {
+    throw new Error(`Expected exactly one migration ending in ${suffix} under ${directory}, found ${matches.length}`);
+  }
+  return `${directory}/${match.name}`;
+}
+
+it("appends governed draft finality in place and preserves the installed runtime boundary", async () => {
+  const forward = findGovernedDraftOwnerForward();
+  const prefix = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+  if (prefix.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
+  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+    const start = plan.forward.findIndex(unit => unit.file === forward);
+    expect(start).toBeGreaterThan(0);
+    plan.forward = plan.forward.slice(0, start);
+  }
+  const store = await withPlatformCatalog(prefix, root => installAccountMutations("bootstrap", true, "governed-draft", root));
+  const final = "public.catalog_order_acceptance_final(uuid)";
+  const dispatch = "public.catalog_admission_runtime_checkout(text,text,uuid,jsonb)";
+  const fingerprints = async () => (await store.owner.query(`SELECT oid,proname,proowner,prosecdef,proconfig,provolatile,proacl::text
+    FROM pg_proc WHERE oid=ANY($1::regprocedure[]) ORDER BY proname`, [[final, dispatch]])).rows;
+  try {
+    const before = await fingerprints();
+    const legacy = (await store.owner.query("INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor) VALUES('pending_payment','XTS',0) RETURNING id")).rows[0]!.id;
+    const subject = await priceSubject(store.owner, "XXX");
+    await addPrice(store.owner, subject, 125);
+    await addPrice(store.owner, subject, 125, "subscription");
+    const customer = (await store.owner.query("INSERT INTO public.clients(email) VALUES('classic@example.invalid') RETURNING id")).rows[0]!.id;
+    const cases = {
+      statusOneTime: "one_time", statusSubscription: "subscription",
+      staleOneTime: "one_time", staleSubscription: "subscription",
+      paidOneTime: "one_time", activateDefault: "subscription", activateWithWindow: "subscription",
+    } as const;
+    const classic = await transaction(store.runtime, async db => {
+      const ids = {} as Record<keyof typeof cases, string>;
+      for (const [name, mode] of Object.entries(cases)) {
+        const key = randomUUID();
+        const snapshot = quote(subject.sku);
+        if (mode === "subscription") snapshot.quote.context = { mode, promoCodes: [], cadenceDays: 28 };
+        const response = await createPostgresNativeCheckoutPersistence(db)
+          .createOrderDraft({ idempotencyKey: key, quoteSnapshot: snapshot }, { clientId: customer });
+        await db.query("SELECT public.catalog_admission_attach_legacy_submit($1,$2,$3)", [key, customer, {
+          schemaVersion: 1, ownerNamespace: "example:store", clientId: customer, lane: "example-checkout", requestKey: key,
+          submitDigest: "a".repeat(64), acceptanceTokenDigest: null,
+        }]);
+        ids[name as keyof typeof cases] = response.orderDraft.orderId.slice(6);
+      }
+      expect((await db.query(`UPDATE public.commerce_orders SET metadata=metadata||'{"catalogAdmissionOwnerOrigin":{"stray":true}}'
+        WHERE id=ANY($1) AND catalog_acceptance IS NULL`, [Object.values(ids)])).rowCount).toBe(Object.keys(cases).length);
+      return ids;
+    });
+    const scratch = (await store.owner.query(`INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor,metadata)
+      VALUES('pending_payment','XXX',0,'{"catalogAdmissionOwnerOrigin":null}') RETURNING id`)).rows[0]!.id;
+    const stale = [classic.staleOneTime, classic.staleSubscription];
+    await store.owner.query(`WITH definition AS (
+      INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES('example:stale',
+        '{"id":"example:stale","status":"active","trigger_type":"automatic","discount_type":"fixed_amount",
+          "applies_to_kind":"order_total","stacking_rule":"exclusive","eligibility":{},"applies_to_payload":{},"region_availability":["ZZ"]}',true)
+      RETURNING promotion_id,definition_fingerprint
+    ), adjustment AS (
+      INSERT INTO public.commerce_order_adjustments(order_id,kind,scope,amount_minor,promotion_id,definition_fingerprint)
+      SELECT draft.id,'promotion_discount','order_total',1,promotion_id,definition_fingerprint
+      FROM definition CROSS JOIN unnest($1::uuid[]) AS draft(id) RETURNING *
+    ) INSERT INTO public.commerce_promotion_claims(promotion_id,definition_fingerprint,adjustment_id,order_id,client_id,amount_off_minor,expires_at)
+      SELECT promotion_id,definition_fingerprint,id,order_id,$2,amount_minor,clock_timestamp()+interval '1 hour' FROM adjustment`,
+    [stale, customer]);
+    expect((await store.runner.apply()).applied.slice(0, 1)).toEqual([forward]);
+    expect(await fingerprints()).toEqual(before);
+    expect((await store.owner.query("SELECT metadata ? 'catalogAdmissionOwnerOrigin' AS stamped FROM public.commerce_orders WHERE id=$1", [legacy])).rows)
+      .toEqual([{ stamped: false }]);
+    await expect(store.owner.query(`INSERT INTO public.commerce_orders(status,currency_code,total_amount_minor,metadata)
+      VALUES('pending_payment','XXX',0,'{"catalogAdmissionOwnerOrigin":{}}')`)).rejects.toMatchObject({
+      code: "55000", message: "catalog_acceptance_immutable", constraint: "catalog_owner_origin",
+    });
+    const status = [classic.statusOneTime, classic.statusSubscription];
+    const paid = [classic.paidOneTime, classic.activateDefault, classic.activateWithWindow];
+    const lifecycle = await Promise.allSettled([
+      ...status.map(id => store.runtime.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [id])),
+      store.runtime.query(`SELECT public.commerce_sweep_stale_promotion_claims(clock_timestamp()+interval '3 hours',2,15,0) AS sweep`),
+      ...paid.map(async id => {
+        const { rows: [opened] } = await store.runtime.query(`SELECT public.commerce_open_settlement_intent($1,$2,'sandbox',125,'XXX') AS result`,
+          [`open:${id}`, id]);
+        return store.runtime.query("SELECT public.commerce_record_settlement($1,$2,'succeeded',$3) AS result",
+          [`paid:${id}`, opened!.result.settlement.id, `captured:${id}`]);
+      }),
+    ]);
+    expect(lifecycle).toMatchObject([
+      { status: "fulfilled", value: { rowCount: 1 } },
+      { status: "fulfilled", value: { rowCount: 1 } },
+      { status: "fulfilled", value: { rows: [{ sweep: { checked: 2, cancelled: 2, skipped: 0 } }] } },
+      ...paid.map(id => ({ status: "fulfilled", value: { rows: [{ result: { settlement: { orderId: id, status: "settled" } } }] } })),
+    ]);
+    const activation = await Promise.allSettled([
+      [classic.activateDefault, 72] as const, [classic.activateWithWindow, 24] as const,
+    ].map(async ([id, hours]) => {
+      await store.runtime.query("SELECT public.subscription_declare_provisional_activation($1,$2,28)", [`declare:${id}`, id]);
+      const inputs = [`activate:${id}`, id, hash(`captured:${id}`)];
+      if (hours === 72) await store.runtime.query("SELECT public.subscription_activate_from_captured_payment($1,$2,$3)", inputs);
+      else await store.runtime.query("SELECT public.subscription_activate_from_captured_payment_with_edit_window($1,$2,$3,$4)", [...inputs, hours]);
+      return (await store.owner.query(`SELECT a.state,s.edit_window_hours,c.status
+        FROM public.commerce_orders o JOIN public.subscription_cycles c ON c.id=o.subscription_cycle_id
+        JOIN public.subscription_activations a ON a.order_id=o.id
+        JOIN public.subscriptions s ON s.id=a.subscription_id AND s.id=c.subscription_id WHERE o.id=$1`, [id])).rows;
+    }));
+    expect(activation).toEqual([72, 24].map(edit_window_hours =>
+      ({ status: "fulfilled", value: [{ state: "active", edit_window_hours, status: "paid" }] })));
+    expect((await store.owner.query(`SELECT status,catalog_acceptance,metadata->'catalogAdmissionOwnerOrigin' AS marker
+      FROM public.commerce_orders WHERE id=ANY($1) ORDER BY status`, [Object.values(classic)])).rows)
+      .toEqual([...status.map(() => "cancelled"), ...stale.map(() => "cancelled"), ...paid.map(() => "paid")]
+        .map(orderStatus => ({ status: orderStatus, catalog_acceptance: null, marker: { stray: true } })));
+    expect((await store.owner.query(`SELECT c.status,c.release_reason,r.invalidation_reason
+      FROM public.commerce_promotion_claims c JOIN public.commerce_order_draft_receipts r USING (order_id) WHERE c.order_id=ANY($1)`,
+    [stale])).rows).toEqual(stale.map(() => ({ status: "released", release_reason: "order_cancelled", invalidation_reason: "stale_promotion_claim" })));
+    await expect(store.runtime.query("UPDATE public.commerce_orders SET metadata=metadata-'catalogAdmissionOwnerOrigin' WHERE id=$1", [scratch]))
+      .rejects.toMatchObject({ code: "55000", message: "catalog_acceptance_immutable", constraint: "catalog_owner_origin" });
+    expect((await store.runtime.query(`INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+      VALUES($1,$2,1,1,0,0)`, [scratch, subject.skuId])).rowCount).toBe(1);
+    expect((await store.owner.query("DELETE FROM public.commerce_order_items WHERE order_id=$1", [scratch])).rowCount).toBe(1);
+    expect((await store.owner.query("DELETE FROM public.commerce_orders WHERE id=$1", [scratch])).rowCount).toBe(1);
+    const privileges = (await store.owner.query(`SELECT p.proconfig,p.prosecdef,p.proowner=t.relowner AS table_owner,
+      has_function_privilege('service_role',p.oid,'EXECUTE') AS runtime,
+      has_function_privilege(0::oid,p.oid,'EXECUTE') AS public
+      FROM pg_proc p CROSS JOIN pg_class t WHERE p.oid=$1::regprocedure AND t.oid='public.commerce_orders'::regclass`,
+    ["public.catalog_admission_write_governed_draft(text,uuid,jsonb)"])).rows;
+    expect(privileges).toEqual([{ proconfig: ["search_path=pg_catalog, pg_temp"], prosecdef: false,
+      table_owner: true, runtime: false, public: false }]);
+    const predicatePrivileges = (await store.owner.query(`SELECT p.proconfig,p.prosecdef,p.provolatile,
+      has_function_privilege('service_role',p.oid,'EXECUTE') AS runtime,has_function_privilege(0::oid,p.oid,'EXECUTE') AS public
+      FROM pg_proc p WHERE p.oid='public.catalog_admission_is_governed(jsonb,jsonb)'::regprocedure`)).rows;
+    expect(predicatePrivileges).toEqual([{ proconfig: ["search_path=pg_catalog, pg_temp"], prosecdef: false,
+      provolatile: "i", runtime: true, public: false }]);
+    await expect(store.runtime.query("SELECT public.catalog_admission_runtime_checkout('write',$1,NULL,'{}')", [randomUUID()]))
+      .rejects.toMatchObject(closed);
+  } finally { await store.close(); }
+}, postgresSetupTimeoutMs);

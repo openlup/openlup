@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertConfig, parseHostArguments } from '../shared/config.ts';
+import { hostPortFix, starterDiagnosticCode } from '../shared/refusals.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
+import { runtimeConnectionString } from './runtime-database.ts';
 import { isOperation, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
@@ -11,7 +13,14 @@ import { dispatchAction, pendingBindings, type ApplicationBindings } from './bin
 import { createOriginPolicy, admitRequest } from './origin-policy.ts';
 
 const staticRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
-const options = parseHostArguments(process.argv.slice(2));
+let options: ReturnType<typeof parseHostArguments>;
+try {
+  options = parseHostArguments(process.argv.slice(2));
+} catch (error) {
+  if (starterDiagnosticCode(error) !== 'starter_port_invalid') throw error;
+  process.stderr.write(`starter_port_invalid\nFix: ${hostPortFix}\n`);
+  process.exit(1);
+}
 const config = selectConfiguration(options.configuration);
 assertConfig(config);
 const configuredPort = options.port;
@@ -27,7 +36,9 @@ const contentTypes: Record<string, string> = {
 
 export function createApplication(bindings: ApplicationBindings = pendingBindings()) {
   return createServer((request, response) => {
-    void handle(request, response, bindings).catch(() => {
+    void handle(request, response, bindings).catch((error: unknown) => {
+      // Actionable host refusals reach the operator's log; the buyer only sees the dependency code.
+      if (error instanceof Error && error.message.startsWith('OPENLUP_E_')) process.stderr.write(`${error.message}\n`);
       if (!response.headersSent) sendJson(response, 503, { ok: false, code: 'starter_dependency_unavailable' });
       else response.end();
     });
@@ -35,6 +46,8 @@ export function createApplication(bindings: ApplicationBindings = pendingBinding
 }
 
 async function handle(request: IncomingMessage, response: ServerResponse, bindings: ApplicationBindings): Promise<void> {
+  // Measured before the body is read or the caller is authenticated; both can wait on the host.
+  const receivedAt = performance.now();
   response.setHeader('Cache-Control', 'no-store');
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('Referrer-Policy', 'no-referrer');
@@ -71,7 +84,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
       return;
     }
     const actor = await bindings.authenticate(request);
-    const result = await dispatchAction(bindings, operation, input, { actor, commandKey, config, ...(request.headers.cookie ? { requestCookie: request.headers.cookie } : {}),
+    const result = await dispatchAction(bindings, operation, input, { actor, commandKey, receivedAt, config, ...(request.headers.cookie ? { requestCookie: request.headers.cookie } : {}),
       setCookie: cookie => response.setHeader('Set-Cookie', cookie),
       accept: async () => { sendJson(response, 200, { ok: true, value: { accepted: true } }); } });
     if (!response.writableEnded) sendJson(response, result.ok ? 200 : result.status ?? 409, result);
@@ -124,8 +137,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const publicationPassword = publicationPasswordFile
     ? (await readFile(publicationPasswordFile, 'utf8').catch(() => { throw new Error('starter_catalogue_publication_password_missing'); })).trim()
     : undefined;
-  const bindings = options.databaseUrl
-    ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy, config, options.quoteAcceptanceKeyFile
+  const connectionString = runtimeConnectionString(options.databaseUrl);
+  const bindings = connectionString
+    ? await (await import('./native-composition.ts')).composeNativeBindings(connectionString, originPolicy, config, options.quoteAcceptanceKeyFile
       ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined, publicationPassword, { readinessJobs: true })
     : pendingBindings();
   const server = createApplication(bindings);

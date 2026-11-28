@@ -11,12 +11,20 @@ import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { findAffectedTests } from "./affected-tests.mjs";
-import { INVENTORY_PATH, MIGRATION_REGISTRIES } from "./agent-review-derived.mjs";
+import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope } from "./agent-review-derived.mjs";
 import { carrierLocale, carrierNpmCli, carrierPlan, describeCarrierToolchain, readReportOwners } from "./agent-review-landing.mjs";
 import { TOOLING_INPUTS, excludedToolingTests } from "./ci-test-scope.mjs";
 import { readCommits, signOffVerdict } from "./dco-signoff-check.ts";
 import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
 import { checkPlatformMigrationProjection } from "./packages/platform-migration-projection.ts";
+import {
+  PLATFORM_MIGRATION_MANIFEST,
+  readPlatformMigrationManifest,
+  runPlatformMigrationManifestCheck,
+  selectPlatformMigrationManifest,
+  type PlatformMigrationManifest,
+  type PlatformMigrationPlan,
+} from "./platform-migration-manifest.ts";
 import { checkSettingsCandidates, isSettingsCandidateSourcePath } from "./settings-candidate-guard.ts";
 
 export type Status = "PASS" | "WARN" | "SKIP" | "FAIL";
@@ -295,6 +303,7 @@ const INVENTORY_CLOSURE_DIRS = [
   "packages/platform/src/catalog",
   "packages/platform/dist/migrations",
   "packages/platform/dist/catalog",
+  "server/adapters/postgres/connectedStoreDomains",
 ];
 
 function collectFilesRecursive(root: string, dir: string, filter?: (rel: string) => boolean): string[] {
@@ -617,6 +626,131 @@ const GUIDE_TRIGGER = /^(?:AGENTS\.md$|CONTRIBUTING\.md$|packages\/[^/]+\/(?:api
 const PACKAGE_MANIFEST_TRIGGER = /^(?:packages\/[^/]+\/package\.json|config\/openlup-packages\.json)$/u;
 export const CLIENT_SECRET_BOUNDARY_TRIGGER = /^(?:src\/|server\/|api\/|config\/environment-variables\.json$|scripts\/check-client-secret-boundary\.ts$)/u;
 export const SITE_ROUTES_TRIGGER = /^(?:config\/site-routes\.json$|config\/public-reference-site-routes\.json$|scripts\/site-routes)/u;
+export const MIGRATION_MANIFEST_TRIGGER = /^(?:db\/platform\/migrations\/|packages\/platform\/sql\/|packages\/platform\/src\/migrations\/catalog\.ts$|config\/platform-migration-manifest\.json$|tests\/postgres\/current-installation-inventory\.json$|scripts\/platform-migration-manifest\.ts$|scripts\/packages\/platform-migration-projection\.ts$)/u;
+
+const INVENTORY_TAIL_ANCHOR = "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql";
+
+const isManifestEntry = (value: unknown): value is { file: string; sha256: string } => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.file === "string" && typeof record.sha256 === "string";
+};
+
+function checkFiveProfileInventoryParity(root: string): string[] {
+  let rawManifest: unknown;
+  try {
+    rawManifest = readPlatformMigrationManifest(root);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [`${PLATFORM_MIGRATION_MANIFEST}: failed to read manifest: ${message}`];
+  }
+  if (!rawManifest || typeof rawManifest !== "object" || Array.isArray(rawManifest)) {
+    return [`${PLATFORM_MIGRATION_MANIFEST}: missing or invalid manifest`];
+  }
+  const manifest = rawManifest as PlatformMigrationManifest;
+  if (manifest.schemaVersion !== 3) {
+    return [`${PLATFORM_MIGRATION_MANIFEST}: expected schemaVersion 3 for 5-profile inventory parity`];
+  }
+  const inventoryFullPath = resolve(root, INVENTORY_PATH);
+  if (!existsSync(inventoryFullPath)) {
+    return [`${INVENTORY_PATH}: missing installation inventory`];
+  }
+  let profilesUnknown: unknown;
+  try {
+    profilesUnknown = inventoryEnvelope(readFileSync(inventoryFullPath, "utf8")).value.current.profiles;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [`${INVENTORY_PATH}: invalid installation inventory: ${message}`];
+  }
+  if (!profilesUnknown || typeof profilesUnknown !== "object" || Array.isArray(profilesUnknown)) {
+    return [`${INVENTORY_PATH}: missing current.profiles object`];
+  }
+  const profileMap = profilesUnknown as Record<string, unknown>;
+  let selections: ReadonlyArray<readonly [string, PlatformMigrationPlan]>;
+  try {
+    selections = [
+      ["legacy", selectPlatformMigrationManifest(manifest, "legacy")],
+      ["bootstrap", selectPlatformMigrationManifest(manifest, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true })],
+      ["separate", selectPlatformMigrationManifest(manifest, "qualified-v2", { migrationIsBootstrap: false, hasRestore: true })],
+      ["admin-managed", selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode: "installer-managed" })],
+      ["admin-operator", selectPlatformMigrationManifest(manifest, "qualified-admin", { roleMode: "operator-provisioned" })],
+    ];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return [`${PLATFORM_MIGRATION_MANIFEST}: unable to select all 5 profiles: ${message}`];
+  }
+  const errors: string[] = [];
+  const expectedProfiles = new Set(selections.map(([profileName]) => profileName));
+  const extraProfiles = Object.keys(profileMap).filter((name) => !expectedProfiles.has(name)).sort();
+  if (extraProfiles.length > 0) {
+    errors.push(`${INVENTORY_PATH}: unexpected current.profiles key(s): ${extraProfiles.join(", ")}`);
+  }
+  for (const [profileName, plan] of selections) {
+    const rawProfile = profileMap[profileName];
+    if (!rawProfile || typeof rawProfile !== "object" || Array.isArray(rawProfile)) {
+      errors.push(`${INVENTORY_PATH}: missing current.profiles.${profileName}`);
+      continue;
+    }
+    const profile = rawProfile as Record<string, unknown>;
+    if (profile.objectInventorySha256 !== plan.objectInventorySha256) {
+      errors.push(`${INVENTORY_PATH}: current.profiles.${profileName}.objectInventorySha256 does not match ${PLATFORM_MIGRATION_MANIFEST} (run npm run inventory:refresh with Docker)`);
+    }
+    if (!isManifestEntry(plan.baseline) || !Array.isArray(plan.forward) || !plan.forward.every(isManifestEntry)) {
+      errors.push(`${PLATFORM_MIGRATION_MANIFEST}: invalid baseline/forward entry in ${profileName}`);
+      continue;
+    }
+    const expectedTail = [plan.baseline, ...plan.forward].reverse().map(({ file, sha256 }) => ({ file, sha256 }));
+    const expectedExactTailCount = expectedTail.findIndex(({ file }) => file === INVENTORY_TAIL_ANCHOR);
+    if (profile.count !== expectedTail.length) {
+      errors.push(`${INVENTORY_PATH}: current.profiles.${profileName}.count (${String(profile.count)}) does not match manifest length (${expectedTail.length})`);
+    }
+    if (expectedExactTailCount < 0) {
+      errors.push(`${PLATFORM_MIGRATION_MANIFEST}: missing exact-installation tail anchor ${INVENTORY_TAIL_ANCHOR} in ${profileName}`);
+    } else if (profile.exactTailCount !== expectedExactTailCount) {
+      errors.push(`${INVENTORY_PATH}: current.profiles.${profileName}.exactTailCount (${String(profile.exactTailCount)}) does not match manifest anchor index (${expectedExactTailCount})`);
+    }
+    const tailMatches = Array.isArray(profile.tail)
+      && profile.tail.length === expectedTail.length
+      && profile.tail.every((entry, index) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+        const record = entry as Record<string, unknown>;
+        const expected = expectedTail[index]!;
+        return Object.keys(record).length === 2 && record.file === expected.file && record.sha256 === expected.sha256;
+      });
+    if (!tailMatches) {
+      errors.push(`${INVENTORY_PATH}: current.profiles.${profileName}.tail does not match ${PLATFORM_MIGRATION_MANIFEST}`);
+    }
+  }
+  return errors;
+}
+
+/** Fast pure-Node check of canonical migration manifest, package projection, and 5-profile inventory parity. */
+export function checkMigrationManifestAndInventory(root = process.cwd()): string[] {
+  const errors = [...runPlatformMigrationManifestCheck(root)];
+  try {
+    errors.push(...checkPlatformMigrationProjection(root));
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+  try {
+    errors.push(...checkFiveProfileInventoryParity(root));
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : String(error));
+  }
+  return errors;
+}
+
+function migrationManifestGuard(changes: readonly Change[], root = process.cwd()): CheckResult {
+  if (!changes.some(({ path }) => MIGRATION_MANIFEST_TRIGGER.test(path))) {
+    return { check: "migration manifest", status: "SKIP", detail: "no migration manifest, projection, or inventory inputs changed" };
+  }
+  const started = Date.now();
+  const errors = checkMigrationManifestAndInventory(root);
+  const seconds = Math.round((Date.now() - started) / 1000);
+  return errors.length === 0
+    ? { check: "migration manifest", status: "PASS", detail: `manifest, projection, and 5-profile inventory match (${seconds} s)` }
+    : { check: "migration manifest", status: "FAIL", detail: errors[0]!, notes: errors };
+}
 
 async function runTriggeredGuard(
   check: string,
@@ -825,7 +959,7 @@ async function fastPreflight(now: Date): Promise<number> {
     }),
     runFastItem("migration projection", () => {
       if (!clean) return { check: "migration projection", status: "SKIP", detail: "clean committed checkout required" };
-      const errors = checkPlatformMigrationProjection(process.cwd());
+      const errors = checkMigrationManifestAndInventory(process.cwd());
       return { check: "migration projection", status: errors.length ? "FAIL" : "PASS", detail: errors[0] ?? "fresh", notes: errors };
     }),
     runFastItem("fragments", () => fragments(requireChanges())),
@@ -946,6 +1080,7 @@ async function areaPreflight(): Promise<number> {
     parallel: false,
     checks: [
       ["eslint changed", () => eslintChanged(changes)],
+      ["migration manifest", () => migrationManifestGuard(changes)],
       ["area guards", () => areaToolingGuards(changes)],
       ["sql admit", () => sqlAdmit(changes)],
     ],
@@ -1008,6 +1143,7 @@ export async function main(now: Date, args: readonly string[] = []): Promise<num
             ["scripts/site-routes.mjs", "--public-reference"],
             "no site route inputs changed",
           )],
+          ["migration manifest", () => migrationManifestGuard(changes)],
           ["sql admit", () => sqlAdmit(changes)],
         ],
       },

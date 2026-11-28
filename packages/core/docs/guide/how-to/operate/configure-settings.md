@@ -42,21 +42,23 @@ file and symbol holding the configured value. In the demonstration, run
 Offline `show` for package keys returns catalogue metadata. For a declared
 app setting with a reported value, `show` also returns a file observation with
 the configuration selected by the binding and the value it reports. For
-`account_support_operator_slide_max_days`, `inventory_renewal_protection`,
-`payment_method_expiry_warning_days`, `payments.declineNoticeTiming`,
-`promotion_claim_hold_hours`, `subscription_edit_quote_ttl_minutes`,
+`account_support_operator_slide_max_days`, `commerce.returnReasons`,
+`inventory_renewal_protection`, `payment_method_expiry_warning_days`,
+`payments.declineNoticeTiming`, `promotion_claim_hold_hours`,
+`shipping.paymentMethodPreferences`, `subscription_edit_quote_ttl_minutes`,
 `subscription_minimum_base_units`, `subscription_sized_intro_phase`,
-`subscriptions.retrySchedule`, `shipping_flat_minor`,
+`subscriptions.rescheduleTimeZone`, `subscriptions.retrySchedule`, `shipping_flat_minor`,
 `pricing.subscriptionPricePolicy`, `communications.nativeDeliveryControls`, and (with `--app`)
 reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store (connected reads of `communications.nativeDeliveryControls` require an explicit
 `SELECT` grant on `public.communication_delivery_controls`). The existing installed
 row or rows may be an explicit override. An absent
-`account_support_operator_slide_max_days`, `inventory_renewal_protection`,
-`payment_method_expiry_warning_days`, `payments.declineNoticeTiming`,
-`promotion_claim_hold_hours`, `subscription_edit_quote_ttl_minutes`,
-`subscriptions.retrySchedule`, or `shipping_flat_minor` row uses the platform fallback,
+`account_support_operator_slide_max_days`, `commerce.returnReasons`,
+`inventory_renewal_protection`, `payment_method_expiry_warning_days`,
+`payments.declineNoticeTiming`, `promotion_claim_hold_hours`,
+`shipping.paymentMethodPreferences`, `subscription_edit_quote_ttl_minutes`,
+`subscriptions.rescheduleTimeZone`, `subscriptions.retrySchedule`, or `shipping_flat_minor` row uses the platform fallback,
 whereas an absent `subscription_minimum_base_units`, `subscription_sized_intro_phase`,
 `pricing.subscriptionPricePolicy`, or `communications.nativeDeliveryControls`
 row reports `absent` (`subscription_minimum_base_units` and `subscription_sized_intro_phase`
@@ -107,19 +109,20 @@ To change an installed policy such as `inventory_renewal_protection` in the star
 2. Run offline validation by passing `check --configuration <id>` to your starter's `settings` script.
 3. Preview the proposed policy against the store database with `preview` before installing.
 4. Install the updated policy with `./lifecycle up --configuration <id>`.
-5. Verify the live installed row with a connected `show --database-url ...`.
+5. Verify the live installed row with a connected `show`.
 
-In the Docker Compose local demonstration, the `database` service does not publish a port on the host, while connected `openlup settings` commands require a TCP connection. Run connected `show` and `preview` inside the `application` container on the Compose network:
-
-```sh
-docker compose exec application ./node_modules/.bin/openlup settings --app ./owned/settings-host.ts show inventory_renewal_protection --database-url postgresql://starter_runtime@database:5432/neutral_store --json
-```
-
-Pass the same `--database-url` to `preview` inside `docker compose exec application` when estimating stock availability before reinstalling. To inspect the database directly with `psql`, run:
+For the local demonstration, start with `./lifecycle up` and run these commands
+from the extracted application. Set `CONFIGURATION` to the selected owned ID.
 
 ```sh
-docker compose exec -T database psql -U starter_runtime -d neutral_store
+PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+  { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+docker compose --project-name "$PROJECT" exec -T application ./lifecycle settings show inventory_renewal_protection --json
+docker compose --project-name "$PROJECT" exec -T application ./lifecycle settings preview inventory_renewal_protection --configuration "$CONFIGURATION" --value "$POLICY_JSON" --sku "$SKU" --json
 ```
+
+Use `--value -` to read the policy from stdin. For an owner socket read, use
+`docker compose --project-name "$PROJECT" exec -T database psql -X -U starter_install -d neutral_store`.
 
 ## Check owned configuration before proposing a change
 
@@ -240,7 +243,13 @@ Application configuration rejected while loading — gift.wrapFeeMinor requires 
 From the extracted starter, preview the proposed inventory policy against the
 intended store. Pass the value with `--value` and repeat `--sku` for each SKU to inspect.
 
-Use `preview inventory_renewal_protection` with
+For the local demonstration, use its recorded project name as shown above.
+
+```sh
+docker compose --project-name "$PROJECT" exec -T application ./lifecycle settings preview inventory_renewal_protection --configuration "$CONFIGURATION" --value "$POLICY_JSON" --sku "$SKU" --json
+```
+
+For a separately configured store, use `preview inventory_renewal_protection` with
 `--value '{"revision":"store-1","renewalProtectionDays":21}'`,
 `--database-url <read-capable-url>`, `--sku <sku>` and `--json`.
 
@@ -288,11 +297,12 @@ stdout. Pass an explicit `--app` only for application code you trust.
 
 List, show and explain work for platform keys without an app or database. With a
 PostgreSQL URL, the built-in readers can show the installed row or rows (or fallback or
-absent state) for `account_support_operator_slide_max_days`, `inventory_renewal_protection`,
-`payment_method_expiry_warning_days`, `payments.declineNoticeTiming`,
-`promotion_claim_hold_hours`, `subscription_edit_quote_ttl_minutes`,
+absent state) for `account_support_operator_slide_max_days`, `commerce.returnReasons`,
+`inventory_renewal_protection`, `payment_method_expiry_warning_days`,
+`payments.declineNoticeTiming`, `promotion_claim_hold_hours`,
+`shipping.paymentMethodPreferences`, `subscription_edit_quote_ttl_minutes`,
 `subscription_minimum_base_units`, `subscription_sized_intro_phase`,
-`subscriptions.retrySchedule`, `shipping_flat_minor`,
+`subscriptions.rescheduleTimeZone`, `subscriptions.retrySchedule`, `shipping_flat_minor`,
 `pricing.subscriptionPricePolicy`, and `communications.nativeDeliveryControls`
 (requiring an explicit `SELECT` grant on `public.communication_delivery_controls`).
 A stock preview needs the application's stock source. A connected reminder
@@ -394,7 +404,10 @@ and whether retrying can help.
 | `payment_decline_notice_timing_policy_invalid` | Check the value schema and examples using `show payments.declineNoticeTiming`. |
 | `promotion_claim_hold_hours_policy_invalid` | Check the value schema and examples using `show promotion_claim_hold_hours`. |
 | `account_support_operator_slide_max_days_policy_invalid` | Check the value schema and examples using `show account_support_operator_slide_max_days`. |
+| `commerce_return_reasons_policy_invalid` | Check the value schema and examples using `show commerce.returnReasons`. |
+| `shipping_payment_method_preferences_policy_invalid` | Check the value schema and examples using `show shipping.paymentMethodPreferences`. |
 | `subscription_edit_quote_ttl_minutes_policy_invalid` | Check the value schema and examples using `show subscription_edit_quote_ttl_minutes`. |
+| `subscription_reschedule_timezone_policy_invalid` | Check the value schema and examples using `show subscriptions.rescheduleTimeZone`. |
 | `subscription_retry_schedule_policy_invalid` | Check the value schema and examples using `show subscriptions.retrySchedule`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |
 

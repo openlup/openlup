@@ -8,7 +8,7 @@ target price.
 ## Owns / does not own
 
 These server paths are named compatibility bindings over the application code in
-[`@openlup/platform/catalog`](../../../packages/platform/README.md#catalog).
+[`@openlup/platform/catalog`](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#catalog).
 They retain the shared reference admin kit, operation spec/flags, schemas,
 responder and wire versions; handlers receive the packaged BundleRpcError
 constructor by identity through its re-export. Catalog read error identity is re-exported from the

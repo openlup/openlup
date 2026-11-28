@@ -1736,6 +1736,19 @@ export type PaidOrderMoneyV2 = OrderMoneyV2 & Readonly<{
     capturedAt: string;
     paidMinor: number;
 }>;
+type EraseDestination<Money extends PaidOrderMoneyV2> = Money extends PaidOrderMoneyV2 ? Omit<Money, "destination" | "deliverySelectionRef" | "deliveryBuckets"> & Readonly<{
+    destination: {
+        snapshotRef: string;
+        schemaVersion: 2;
+        erased: true;
+    };
+    deliveryBuckets: readonly Omit<Money["deliveryBuckets"][number], "carrierRef" | "serviceRef">[];
+}> : never;
+/** @experimental Original quote-based paid money with the destination copies erased. */
+export type ErasedPaidOrderMoneyV2 = EraseDestination<Extract<PaidOrderMoneyV2, {
+    acceptedQuoteRef: unknown;
+}>>;
+export {};
 ```
 ## dist/commerce/contracts/ports.d.ts
 
@@ -2413,6 +2426,31 @@ export interface TransactionalEmailPort<Locale extends string = string> {
     sendShipmentDeliveredNotice(input: ShipmentDeliveredEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
     sendShipmentExceptionNotice(input: ShipmentExceptionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
 }
+```
+## dist/commerce/returnReasonsPolicy.d.ts
+
+```ts
+/** @experimental Default allowed return reason codes when no `commerce_return_reasons` setting row is installed. */
+export declare const DEFAULT_COMMERCE_RETURN_REASONS: readonly string[];
+/** @experimental Installed policy configuring the allowed return reason codes for new return requests. */
+export interface CommerceReturnReasonsPolicy {
+    revision: string;
+    reasons: string[];
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `commerce_return_reasons` policy document using SQL-equivalent rules. */
+export declare function validateCommerceReturnReasons(value: unknown): CommerceReturnReasonsPolicy;
+/** @experimental Install the commerce return reasons policy on a host-owned write-capable connection. */
+export declare function installCommerceReturnReasonsPolicy(db: Executor, policy: CommerceReturnReasonsPolicy): Promise<void>;
+/** @experimental Read an explicit `commerce_return_reasons` override, returning `undefined` when absent. */
+export declare function readCommerceReturnReasonsOverride(db: Executor): Promise<CommerceReturnReasonsPolicy | undefined>;
+/** @experimental Read the installed `commerce_return_reasons` policy or the default absence fallback. */
+export declare function readCommerceReturnReasonsPolicy(db: Executor): Promise<CommerceReturnReasonsPolicy>;
+export {};
 ```
 ## dist/commerce/server/catalogAdmissionRefusal.d.ts
 
@@ -5147,6 +5185,9 @@ type Fiscal = NonNullable<Extract<Pin, {
 type TaxRequest = ReturnType<typeof makeTaxQuoteRequest>;
 type TaxInput = TaxRequest["input"];
 type AdapterResult = Awaited<ReturnType<TaxCalculationPortV1["quote"]>>;
+type CheckoutDestinationRead = Extract<DestinationVerifiedReadV2, {
+    evidenceExpiresAt: string;
+}>;
 type Refusal = {
     kind: "refused";
     code: string;
@@ -5184,7 +5225,7 @@ type ExclusiveBinding = {
         kind: "refused";
     }>) => boolean;
     readCoverage: (installationRef: string, accountRef: string) => Promise<TaxCoverageRevision | null>;
-    readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: DestinationVerifiedReadV2) => Promise<Pick<TaxInput, "market" | "shipFromRef" | "policyRevision" | "required">>;
+    readTaxFacts: (owner: QuoteOwnerContext, plan: CommerceQuoteMoneyV2Plan, service: DestinationServicePinV2, document: CheckoutDestinationRead) => Promise<Pick<TaxInput, "market" | "shipFromRef" | "policyRevision" | "required">>;
 };
 /** @experimental Trusted host-authorized checkout owner. */
 export type QuoteOwnerContext = Omit<Begin["identity"], "evaluationKey">;
@@ -5216,7 +5257,7 @@ export interface DbBackedCommerceQuotePortV2Deps {
     };
     destination: Pick<DestinationPortV2, "snapshot" | "read">;
     snapshotCommand: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request) => Promise<Parameters<DestinationPortV2["snapshot"]>[1]>;
-    readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: DestinationVerifiedReadV2) => Promise<FreshFacts>;
+    readPlan: (owner: QuoteOwnerContext, request: CommerceQuoteV2Request, document: CheckoutDestinationRead) => Promise<FreshFacts>;
     readLimits: (rail: Rail) => Promise<LimitsReadResult>;
     clockToleranceMs: number;
     readFiscal?: (owner: QuoteOwnerContext) => Promise<Fiscal>;
@@ -5656,6 +5697,8 @@ export type { CommerceQuotePortV2, CommerceQuoteV2Request, DbBackedCommerceQuote
 export { readPublishedSkuTaxAssignments } from "./publishedSkuTaxAssignments.js";
 /** @experimental Construct the native quote port with the same registry the host uses for privacy. */
 export declare function createDbBackedCommerceQuotePortV2(deps: DbBackedCommerceQuotePortV2Deps): CommerceQuotePortV2;
+export { DEFAULT_COMMERCE_RETURN_REASONS, validateCommerceReturnReasons, installCommerceReturnReasonsPolicy, readCommerceReturnReasonsOverride, readCommerceReturnReasonsPolicy, } from "../returnReasonsPolicy.js";
+export type { CommerceReturnReasonsPolicy } from "../returnReasonsPolicy.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 
@@ -7022,6 +7065,7 @@ interface FulfillmentObservationInput<LocalStatus, TrackingStatus> {
     stockIdempotencyKey: string;
     handoffIdempotencyKey: string;
     trackingIdempotencyKey: (trackingNumber: string) => string;
+    recordDeliveryWithoutTracking?: () => Promise<void>;
     issueAccountingInvoice?: () => Promise<void>;
     onReplayed?: () => void;
     onTrackingRecorded?: (result: {
@@ -7036,7 +7080,7 @@ interface FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus> {
     suppressDispatched(status: LocalStatus): boolean;
     trackingStatus(status: LocalStatus): TrackingStatus;
 }
-/** Stock → durable handover → every tracking reference → optional invoice. No catches or retries. */
+/** Stock → durable handover → tracking or verified arrival → optional invoice. No catches or retries. */
 export declare function applyFulfillmentObservationEffects<LocalStatus, TrackingStatus>(input: FulfillmentObservationInput<LocalStatus, TrackingStatus>, policy: FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus>): Promise<void>;
 export {};
 ```
@@ -8164,6 +8208,7 @@ export type FulfillmentIngressResult = {
     replayed: boolean;
     trackingRefs: number;
     trackingReadBacks: number;
+    deliveryReadBack?: true;
     supersededCause?: string;
 });
 /** Safe response classes only; the host owns HTTP and localized message text. */
@@ -8199,6 +8244,13 @@ export declare function verifyAndNormalizeFulfillmentObservation(input: {
             replayed: boolean;
         }>;
         effects: EffectInput["port"];
+        /**
+         * Commit delivery only after proving the exact parcel and chronology. Receives the
+         * retained verified observation after handoff, before accounting and receipt completion.
+         */
+        recordDeliveryWithoutTracking?(ref: DispatchRef, observation: FulfillmentObservation): Promise<{
+            readBack: boolean;
+        }>;
         keys: {
             stock(ref: string): string;
             handoff(ref: string): string;

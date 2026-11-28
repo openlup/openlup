@@ -16,7 +16,7 @@ PostgreSQL bindings. Constructing a binding does not mount a runner or select a
 payment provider. Your application supplies authorization, durable storage,
 scheduling and provider bindings, using matching installed `@openlup/*`
 versions. Check the installed exports and
-[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/subscriptions.api.md)
+[subscription API reference](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/subscriptions.api.md)
 before selecting a seam.
 
 The engine returns models and events. Durable admission decides whether a new
@@ -180,7 +180,7 @@ uncollected cycle. These duties are not performed by a pure engine call.
 
 The managed win-back and historical recovery functions assign the requested
 instant plus the implementation’s restart lead unconditionally; consult the
-[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
+[migration owner](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/DATA_AND_MIGRATIONS.md#native-subscription-commands-n2)
 for the durable timing boundary. Unlike the core restart, they do not
 preserve a later stored date: a subscription paid through a later date can
 therefore receive an earlier next charge on this path. Account for that
@@ -331,6 +331,13 @@ A group with spare capacity yields its slots to the other group. Settlement
 continues through the recorded operation and its prepared attempt after a lease
 expires.
 
+For managed renewal reporting, pass the returned attempt status or a normalized
+row error to `classifyManagedRenewalPayment` from
+`@openlup/platform/subscriptions`. Report attempts prepared without a recorded
+acknowledgement, attempts acknowledged by the provider, and settled attempts
+separately. These counts can coexist with the legacy `charged` or `failed`
+outcome. Use the established renewal rules for charge admission.
+
 ## Durable retry timing
 
 The [retry ladder](subscription-engine.md#the-retry-ladder-terminates) uses delays
@@ -350,7 +357,7 @@ The current definitions are `payment_provider_result_apply` and three-argument
 `20261126020000_settings_wave2_retry_schedule_and_decline_timing.sql` (updating
 `20261124150000_native_provider_retry_cadence.sql`), and four-argument
 `subscription_retry_apply_failure` in
-[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
+[`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
 Verify your selected catalogue or applied prefix with the
 [current-definition lookup](../upgrade/database-migrations.md#find-the-current-function-definition).
 
@@ -516,7 +523,7 @@ contention can still roll capture back; redelivery converges after contention
 clears, without an automatic retry dispatcher.
 
 Operators find review-marked events with the read-only query on the
-[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
+[data and migrations page](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories),
 run through an authorized native PostgreSQL session; pass a returned event ID to
 the truth port's `readEvent` for details. The query records no review decision
 and no money or order transition.

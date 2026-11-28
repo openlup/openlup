@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { createStripePaymentAdapter, stripePaymentCapabilities, type StripePaymentAdapterConfig } from "../../../src/payments/stripe/index.js";
+import { createStripePaymentAdapter, createStripePaymentReconciliationProvider, stripePaymentCapabilities,
+  type StripePaymentAdapterConfig } from "../../../src/payments/stripe/index.js";
 import { mapStripeIntent, mapSetupIntent } from "../../../src/payments/stripe/intentMapper.js";
 import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceProjection.js";
 import { createVerifiedPaymentIngress, readMethodLifecycleEvent } from "../../../src/payments/index.js";
@@ -101,12 +102,56 @@ describe("opt-in payment factory", () => {
     expect(await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded", {}, { livemode: true })))).toEqual({ kind: "refusal", reason: "unsupported-event" });
     expect(() => createStripePaymentAdapter({ ...config, toleranceSeconds: NaN })).toThrow();
   });
+  it("projects capture time from a verified whole-second success event outside event identity", async () => {
+    const { adapter, config } = subject();
+    const success = (extra: Record<string, unknown>) => signed(event("payment_intent.succeeded", {}, extra));
+    const verify = (extra: Record<string, unknown>) => adapter.verifyPort.verifyAndNormalize(success(extra));
+    const instant = new Date(timestamp * 1000).toISOString();
+    const verified = await verify({ livemode: false, account: "acct_capture_fixture" });
+    expect(verified).toMatchObject({
+      kind: "money", providerOccurredAt: instant, capturedAmountBasis: "provider_capture_v1",
+      providerAuditPayload: { livemode: false, captureTimeBasis: "signed_event_v1", providerAccountRef: "acct_capture_fixture" },
+    });
+    expect(await verify({ livemode: "false" })).toMatchObject({
+      fingerprint: "fingerprint" in verified ? verified.fingerprint : undefined,
+      providerAuditPayload: { captureTimeBasis: "signed_event_v1" },
+    });
+    for (const account of [undefined, false, " "]) {
+      expect(await verify({ livemode: false, account })).not.toMatchObject({ providerAuditPayload: { providerAccountRef: expect.anything() } });
+    }
+    for (const created of [timestamp + 0.0001, timestamp + 0.125, instant]) {
+      expect(await verify({ livemode: false, created })).toMatchObject({
+        kind: "money", capturedAmountBasis: "provider_capture_v1", providerAuditPayload: { captureTimeBasis: "invalid_event_time" },
+      });
+    }
+    expect(await verify({ livemode: false, created: undefined })).toMatchObject({ kind: "money", providerOccurredAt: null });
+    expect(await createStripePaymentAdapter({ ...config, mode: "live" }).verifyPort.verifyAndNormalize(success({ livemode: true })))
+      .toMatchObject({ providerAuditPayload: { livemode: true, captureTimeBasis: "signed_event_v1" } });
+  });
   it("preserves dispute outcome, payment linkage and original money", async () => {
     const { adapter } = subject();
     expect(await adapter.verifyPort.verifyAndNormalize(signed(event("charge.dispute.created", { id: "dp_fixture", payment_intent: "pi_fixture" })))).toMatchObject({
       kind: "money", outcome: "disputed", providerEventId: "evt_fixture", providerPaymentRef: "pi_fixture",
       money: { amountMinor: 2599, currency: "EUR" }, providerAuditPayload: { eventType: "charge.dispute.created" },
     });
+  });
+
+  it("carries the installed credential account through verified own-account events and both readback forms", async () => {
+    const intent = { id: "pi_fixture", status: "succeeded", amount: 2599, amount_received: 2599, currency: "eur", client_secret: "transient_fixture" };
+    const { config } = subject(intent);
+    const client = { ...config.client, ownAccountRef: "acct_own_fixture" };
+    const adapter = createStripePaymentAdapter({ ...config, client });
+    for (const [account, expected] of [[null, client.ownAccountRef], [undefined, client.ownAccountRef], ["acct_connected_fixture", "acct_connected_fixture"]]) {
+      const input = signed(event("payment_intent.succeeded", {}, { account, livemode: false }));
+      expect(await adapter.verifyPort.verifyAndNormalize(input)).toMatchObject({ providerAuditPayload: { providerAccountRef: expected } });
+    }
+    expect(await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded", {}, { account: " " }))))
+      .not.toMatchObject({ providerAuditPayload: { providerAccountRef: expect.anything() } });
+    expect(await adapter.readbackPort.readPayment({ identity: { provider: "stripe", providerPaymentRef: intent.id,
+      intentRef: "intent-a", attemptRef: "attempt-a" }, purpose: "recovery", expectedMoney: request.money }))
+      .toMatchObject({ kind: "succeeded", providerOccurredAt: null, providerAccountRef: client.ownAccountRef });
+    expect(await createStripePaymentReconciliationProvider(client).readPayment({ providerPaymentId: intent.id }))
+      .toMatchObject({ status: "succeeded", rawPayload: { providerAccountRef: client.ownAccountRef } });
   });
   it("retains only donor-filtered audit facts and excludes them from event identity", async () => {
     const { adapter } = subject();

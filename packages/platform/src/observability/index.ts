@@ -6,6 +6,10 @@ import type {
   TelemetryFlushResult,
   TelemetryPort,
 } from "./contracts/index.js";
+import type {
+  DeprecationNoticeEvent,
+  DeprecationNoticeInput,
+} from "./contracts/index.js";
 
 export type * from "./contracts/index.js";
 
@@ -216,4 +220,78 @@ export function createSafeTelemetryPort(input: {
       }
     },
   };
+}
+
+const MAX_DEFAULT_DEPRECATION_REGISTRY_SIZE = 4_096;
+const defaultDeprecationNoticeRegistry = new Set<string>();
+
+function defaultEmitDeprecationNotice(event: DeprecationNoticeEvent): void {
+  if (typeof globalThis.console?.warn === "function") {
+    globalThis.console.warn(event.message);
+  }
+}
+
+/**
+ * Once-per-process, fail-open, zero-PII deprecation telemetry emitter.
+ * Deduplicates by `(subpath, symbol, removeIn)` against `registry` (defaults to
+ * a process-wide Set), scrubs all fields, and swallows emitter errors.
+ */
+export function emitDeprecationNoticeOnce(
+  notice: DeprecationNoticeInput,
+  emit?: (event: DeprecationNoticeEvent) => void,
+  registry: Set<string> = defaultDeprecationNoticeRegistry,
+): boolean {
+  try {
+    if (!notice || typeof notice !== "object") return false;
+    const rawSymbol = typeof notice.symbol === "string" ? notice.symbol.trim() : "";
+    const rawSubpath = typeof notice.subpath === "string" ? notice.subpath.trim() : "";
+    const rawRemoveIn = typeof notice.removeIn === "string" ? notice.removeIn.trim() : "";
+    if (!rawSymbol || !rawSubpath || !rawRemoveIn) return false;
+
+    const symbol = scrubTelemetryString(rawSymbol, 160);
+    const subpath = scrubTelemetryString(rawSubpath, 160);
+    const removeIn = scrubTelemetryString(rawRemoveIn, 64);
+    const rawReplacement =
+      typeof notice.replacement === "string" && notice.replacement.trim().length > 0
+        ? notice.replacement.trim()
+        : undefined;
+    const replacement = rawReplacement ? scrubTelemetryString(rawReplacement, 160) : undefined;
+
+    const dedupeKey = `${subpath}::${symbol}::${removeIn}`;
+    if (registry.has(dedupeKey)) return false;
+    if (registry === defaultDeprecationNoticeRegistry && registry.size >= MAX_DEFAULT_DEPRECATION_REGISTRY_SIZE) {
+      return false;
+    }
+    registry.add(dedupeKey);
+
+    const message = replacement
+      ? `[openlup] Deprecated symbol "${symbol}" from "${subpath}" is scheduled for removal in ${removeIn}; use "${replacement}" instead.`
+      : `[openlup] Deprecated symbol "${symbol}" from "${subpath}" is scheduled for removal in ${removeIn}.`;
+
+    const event: DeprecationNoticeEvent = {
+      kind: "deprecation",
+      symbol,
+      subpath,
+      ...(replacement !== undefined ? { replacement } : {}),
+      removeIn,
+      message,
+      timestamp: new Date().toISOString(),
+    };
+
+    const sink = typeof emit === "function" ? emit : defaultEmitDeprecationNotice;
+    const result: unknown = sink(event);
+    if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+      Promise.resolve(result).catch(() => {
+        // Fail-open on async emitter rejection.
+      });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Resets the process-wide deprecation notice deduplication registry. For tests only. */
+export function __resetDeprecationNoticeRegistryForTests(): void {
+  defaultDeprecationNoticeRegistry.clear();
 }

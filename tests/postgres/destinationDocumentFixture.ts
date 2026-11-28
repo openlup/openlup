@@ -70,6 +70,22 @@ export const testServicePin = {
   deliverySelectionRef: "selected", providerRef: "provider", carrierRef: "carrier",
   serviceRef: "service", servicePolicyRevision: "service-policy", adapterRevision: "adapter",
 };
+export async function editSubscriptionDestination(db: Db, ctx: Context, previous: string | null,
+  service = { ...testServicePin, deliverySelectionRef: "selected-west", adapterRevision: "adapter-west" }, requestKey = randomUUID()) {
+  const original = {
+    address: { line1: "Sample Avenue", city: "Sacramento", postalCode: "95814", countryCode: "US", subdivisionCode: "CA" },
+    contact: { recipientName: "West Recipient", contactPhone: "+15550100102" },
+  };
+  const intent = { dialect: "subscription.destination.change.v2", subscriptionId: ctx.scopeRef, expectedTemplateVersion: 1,
+    expectedSelectionRevision: previous, requestKey, original };
+  const requestDigest = destinationHash(canonicalCatalogDraftJson(["commerce.destination.request.v2", { ...intent, owner: ctx.owner }]));
+  const command = { ...intent, requestDigest, service,
+    validated: { ...original, classificationKeys: ["example"], policyRef: "fixture.policy", policyRevision: "r2" } };
+  const { rows: [{ result }] } = await db.query(
+    "SELECT public.subscription_change_shipping_destination_v2($1,$2,$3) AS result", [ctx, command, new Date().toISOString()]);
+  return { ...result, service };
+}
+
 const checkArgs = (ctx: Context, issued: Issued, pin: unknown) =>
   [ctx, "checkout", ctx.scopeRef, issued.selection.selectionRevision, issued.binding, pin];
 export async function recheckDestination(db: Db, ctx: Context, issued: Issued, pin: unknown = testServicePin) {
@@ -101,12 +117,16 @@ export async function bindDestinationOrder(pool: Pool, ctx: Context, issued: Iss
     expect(await registerDestination(db, ctx, order, issued)).toEqual(issued.binding);
     return order;
   }, key);
-  // The fence compares cluster-wide snapshots before the read runs, so any concurrent transaction can produce this
-  // refusal; its hint asks the caller to retry with the same idempotency key, and this fixture retries once.
-  return bind().catch((error: unknown) => {
-    if (!(error instanceof Error) || error.message !== "catalog_admission_visibility_changed") throw error;
-    return bind();
-  });
+  // The fence compares cluster-wide snapshots before the read runs, so concurrent shard transactions on a shared
+  // template cluster can produce this transient refusal; its hint asks the caller to retry with the same idempotency
+  // key, so retry boundedly with the same key.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await bind();
+    } catch (error: unknown) {
+      if (attempt >= 8 || !(error instanceof Error) || error.message !== "catalog_admission_visibility_changed") throw error;
+    }
+  }
 }
 export async function proveDocumentEncoderParity(owner: Db) {
   const ctx = { clientId: uuid(), scopeRef: uuid(), owner: { installationRef: 'Fixture "α"\\😀', principalKind: "customer",

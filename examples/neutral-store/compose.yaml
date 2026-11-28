@@ -1,27 +1,78 @@
 name: neutral-store
+x-starter-handoff: &starter-handoff
+  - path: ${OPENLUP_STARTER_PREFLIGHT_HANDOFF:-/run/openlup/starter_runtime_preflight_handoff_missing}
+    required: true
+x-starter-credential: &starter-credential
+  type: bind
+  source: ${OPENLUP_STARTER_RUNTIME_SOURCE:-/run/openlup/starter_runtime_source_absent}
+  target: /run/secrets/starter_runtime_password
+  read_only: true
+  bind:
+    create_host_path: false
 services:
   database:
     # Same immutable PostgreSQL 16 image as the repository's test-postgres probe.
     image: postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97
     environment:
-      # initdb needs no password; the active HBA below rejects every privileged TCP login.
-      POSTGRES_HOST_AUTH_METHOD: trust
-    command: ['postgres', '-c', 'hba_file=/etc/postgresql/demo-pg-hba.conf']
+      POSTGRES_HOST_AUTH_METHOD: reject
+      POSTGRES_INITDB_ARGS: --auth-local=reject --auth-host=reject
+    env_file: *starter-handoff
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -e "$$PGDATA/postmaster.pid" ] || [ -L "$$PGDATA/postmaster.pid" ]; then
+          printf '%s\n' 'starter_runtime_database_lock_held' \
+            'The data volume ${COMPOSE_PROJECT_NAME}_database has a PostgreSQL lock file. Its owner may still be running.' \
+            'Run docker ps --filter volume=${COMPOSE_PROJECT_NAME}_database. Use the starter guide to recover a stale lock.' >&2
+          exit 1
+        fi
+        if [ ! -s "$$PGDATA/PG_VERSION" ]; then
+          POSTGRES_PASSWORD=$$(od -An -v -tx1 -N32 /dev/urandom | tr -d ' \n')
+          test "$${#POSTGRES_PASSWORD}" -eq 64
+          export POSTGRES_PASSWORD
+        fi
+        exec docker-entrypoint.sh "$$@"
+      - starter-postgres
+    command: ['postgres', '-c', 'hba_file=/etc/postgresql/starter-pg-hba.conf']
     configs:
       - source: database_auth
-        target: /etc/postgresql/demo-pg-hba.conf
+        target: /etc/postgresql/starter-pg-hba.conf
+      - source: database_bootstrap_environment
+        target: /docker-entrypoint-initdb.d/99-starter-bootstrap-environment.sh
+        mode: 0444
     volumes:
       - database:/var/lib/postgresql/data
       - installation-socket:/var/run/postgresql
     healthcheck:
-      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'starter_runtime', '-d', 'neutral_store']
+      test:
+        - CMD-SHELL
+        - |
+          pg_isready -q -h 127.0.0.1 -U starter_runtime -d neutral_store || exit 1
+          # The final postmaster has recovered the lock. Its managed HBA governs every connection.
+          if ! awk '
+            /^[[:space:]]*(#|$$)/ { next }
+            (($$1 == "local" && NF == 4) || ($$1 == "host" && NF == 5)) && $$NF == "reject" { ++rules; next }
+            { exit 1 }
+            END { if (rules < 2) exit 1 }
+          ' "$$PGDATA/pg_hba.conf"; then
+            [ "$$(psql -XAtqw -U postgres -d postgres -c 'show hba_file')" = /etc/postgresql/starter-pg-hba.conf ] || exit 1
+            umask 077
+            fallback=$$(mktemp "$$PGDATA/.starter-hba.XXXXXX") || exit 1
+            trap 'rm -f "$$fallback"' EXIT
+            printf '%s\n' 'local all all reject' 'host all all all reject' > "$$fallback" &&
+              chown postgres:postgres "$$fallback" && mv -f "$$fallback" "$$PGDATA/pg_hba.conf"
+          fi
       interval: 1s
       timeout: 3s
       retries: 30
   installation:
     build: .
     command: ['node', 'lifecycle.mjs', 'install']
+    environment:
+      OPENLUP_STARTER_RUNTIME_CREDENTIAL: '1'
     volumes:
+      - *starter-credential
       - installation-socket:/var/run/postgresql
       - catalogue-builds:/application/.context/catalogue-builds
     depends_on:
@@ -29,18 +80,22 @@ services:
         condition: service_healthy
   application:
     build: .
-    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0', '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password']
+    command: ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo', '--port', '${OPENLUP_STARTER_PORT:-4319}', '--listen', '0.0.0.0', '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password']
+    env_file: *starter-handoff
     environment:
-      DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
+      OPENLUP_STARTER_RUNTIME_CREDENTIAL: '1'
+    labels:
+      com.openlup.starter.runtime-source: ${OPENLUP_STARTER_RUNTIME_REVISION:-absent}
     volumes:
+      - *starter-credential
       - catalogue-builds:/application/.context/catalogue-builds:ro
     depends_on:
       database:
         condition: service_healthy
     ports:
-      - '127.0.0.1:4319:4319'
+      - '127.0.0.1:${OPENLUP_STARTER_PORT:-4319}:${OPENLUP_STARTER_PORT:-4319}'
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4319/api/config').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:${OPENLUP_STARTER_PORT:-4319}/api/config').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 1s
       timeout: 3s
       retries: 30
@@ -49,11 +104,15 @@ volumes:
   installation-socket:
   catalogue-builds:
 configs:
+  database_bootstrap_environment:
+    # The stock entrypoint sources non-executable .sh files after initialization.
+    content: |
+      unset POSTGRES_PASSWORD
   database_auth:
     content: |
-      # Only the one-shot installer receives the Unix socket volume.
-      local all all trust
+      local postgres postgres trust
+      local neutral_store starter_install trust
+      local all all reject
       host neutral_store openlup_catalog_publication all scram-sha-256
-      # Runtime access is limited to this isolated fictional database.
-      host neutral_store starter_runtime all trust
+      host neutral_store starter_runtime all scram-sha-256
       host all all all reject

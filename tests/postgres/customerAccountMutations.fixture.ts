@@ -8,6 +8,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { hasPgTemplateBroker, tryLeaseTemplateDatabase, type PgTemplateLease, type TemplateProfile } from "../helpers/pgTemplateBroker.js";
+import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 export type AccountProfile = "legacy" | "bootstrap" | "separate" | "admin-managed" | "admin-operator";
 // The migration test installs this prefix before applying the search-path forward.
@@ -143,7 +144,7 @@ function migrationStartupOptions(installation: AccountMutationsInstallation): st
   return undefined;
 }
 
-function createInventoryRunner(
+export function createInventoryRunner(
   migrationUrl: string,
   migrator: Pool,
   installation: AccountMutationsInstallation,
@@ -319,9 +320,10 @@ export async function installAccountMutations(
   label = "source",
   root?: string,
   upgradeRoot?: string,
-  options?: { isolatedCluster?: boolean },
+  options?: { isolatedCluster?: boolean; legacyServiceRole?: boolean },
 ): Promise<AccountMutationsStore> {
-  const brokerProfile = !measure && !root && !upgradeRoot && !options?.isolatedCluster ? ACCOUNT_BROKER_PROFILES[profile] : undefined;
+  const brokerProfile = !measure && !root && !upgradeRoot && !options?.isolatedCluster && !options?.legacyServiceRole
+    ? ACCOUNT_BROKER_PROFILES[profile] : undefined;
   if (brokerProfile) {
     const lease = await tryLeaseTemplateDatabase(brokerProfile, label);
     if (lease) return openBrokerBackedStore(profile, lease, upgradeRoot).store;
@@ -332,6 +334,7 @@ export async function installAccountMutations(
   try {
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("account_mutations_postgres_unavailable");
     const owner = pool(container.connectionString), password = randomUUID();
+    if (profile === "legacy" && options?.legacyServiceRole) await owner.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
     const { installation, runtimeLogin } = await provisionAccountMutationsRoles(owner, container.connectionString, profile, password, "postgres");
     const migrationUrl = loginUrlFor(container.connectionString, installation.generation === "legacy" ? "postgres" : installation.migrationLogin, password);
     const migrator = pool(migrationUrl, migrationStartupOptions(installation));
@@ -342,6 +345,35 @@ export async function installAccountMutations(
     return { owner, migrator, installation, runtime: profile === "legacy" ? owner : pool(loginUrlFor(container.connectionString, runtimeLogin, password)), runner: runnerAt(upgradeRoot),
       get inventory() { return inventory; }, close: () => closePostgres(container, pools) };
   } catch (error) { await closePostgres(container, pools); throw error; }
+}
+
+/** Measure an exact predecessor, then attest its ledger and measured inventory before use. */
+export async function installAccountMutationsBeforeForward(
+  manifest: CompleteManifest,
+  forwardPath: string,
+  profile: "bootstrap" | "admin-managed",
+  label: string,
+): Promise<AccountMutationsStore> {
+  const prefix = structuredClone(manifest);
+  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+    const boundary = plan.forward.findIndex(unit => unit.file === forwardPath);
+    if (boundary < 0) throw new Error(`Predecessor boundary missing from catalogue: ${forwardPath}`);
+    plan.forward = plan.forward.slice(0, boundary);
+  }
+  return withPlatformCatalog(prefix, async root => {
+    const store = await installAccountMutations(profile, true, label, root);
+    try {
+      if (profile === "bootstrap") prefix.qualified.objectInventorySha256.bootstrapMigrator.withRestore = store.inventory;
+      else prefix.qualifiedAdmin.objectInventorySha256.installerManaged = store.inventory;
+      writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(prefix));
+      const verifier = createInventoryRunner(store.migrator.options.connectionString!, store.migrator, store.installation, () => {}, root);
+      if ((await verifier.apply()).applied.length !== 0) throw new Error("Exact predecessor was not fully installed");
+      return store;
+    } catch (error) {
+      await store.close();
+      throw error;
+    }
+  });
 }
 
 /**

@@ -1,2 +1,0 @@
-- `readInvoicePaymentEvidence` reports a payment identity refusal from `@openlup/platform/payments/stripe`, `@openlup/platform/payments/tpay`, or a custom reader throwing `PaymentReadbackIdentityMismatch` as `providerStatus: "unknown"` with `providerEvidence.unavailableReason: "provider_payment_identity_mismatch"`.
-- If your invoice flow can issue during a provider outage, block issuance on `provider_payment_identity_mismatch`. Outages still report `provider_read_failed`.

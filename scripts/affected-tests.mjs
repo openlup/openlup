@@ -94,6 +94,15 @@ const CONTRACT_PIN_RULES = [
     ],
   },
   {
+    match: (filePath) =>
+      filePath === "config/ci-postgres-suite-closures.json"
+      || (filePath.startsWith("tests/postgres/") && filePath !== "tests/postgres/current-installation-inventory.json")
+      || filePath.startsWith("tests/helpers/"),
+    tests: [
+      "scripts/ci-test-scope.test.ts",
+    ],
+  },
+  {
     match: (filePath) => filePath === "config/ci-quarantine.json",
     tests: [
       "scripts/ci-quarantine.test.ts",

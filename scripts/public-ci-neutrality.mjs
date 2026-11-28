@@ -79,8 +79,8 @@ const adapterReportFiles = new Set([
   "config/openlup-publication-catalog.json",
 ]);
 const adapterReportToken = new RegExp(`(?<![\\w.-])communications-(?:${adapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
-// Assembled release notes may carry the same adapter identifiers as their inputs.
-const releaseAdapterTokenCarrier = /^packages\/(?:core\/(?:CHANGELOG|docs\/guide\/upgrade\/v[0-9-]+)|platform\/CHANGELOG)\.md$/;
+// Assembled release notes and the machine-derived release index may carry the same adapter identifiers as their inputs.
+const releaseAdapterTokenCarrier = /^packages\/(?:core\/(?:CHANGELOG\.md|docs\/guide\/upgrade\/v[0-9-]+\.md|meta\/release-index\.json)|platform\/CHANGELOG\.md)$/;
 function adapterCarrierTokens(path, contents, subpathFiles, subpath, report) {
   const releaseNotes = releaseAdapterTokenCarrier.test(path);
   if (!releaseNotes && !subpathFiles.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return undefined;

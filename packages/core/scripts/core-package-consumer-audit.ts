@@ -68,8 +68,9 @@ const packagedNeutralityPolicy: SourceNeutralityPolicy = {
 const approvedDogfoodEvidence = "A first-party production deployment consumes package seams; this is first-party evidence only.";
 const extensionlessTextPackFiles = new Set(["LICENSE"]);
 const packagedAdapterReference = new RegExp([
-  // Released subpaths are inline code; generated dist references end their line.
+  // Released subpaths are inline code or JSON string entries in meta/release-index.json; generated dist references end their line.
   "(?<=`)(?:@openlup/platform/)?(?:" + adapterSubpaths + ")(?=`)",
+  "(?<=\")@openlup/platform/(?:" + adapterSubpaths + ")(?=\")",
   "^(?:Added|Removed) package subpath `\\./(?:" + adapterSubpaths + ")`\\.$",
   // Mask only the directory so the file name itself remains subject to the audit.
   String.raw`(?<= )dist/(?:${adapterSubpaths})(?=/[A-Za-z0-9-]+(?:\.[A-Za-z0-9]+)*(?:\n|(?![\s\S])))`,
@@ -246,7 +247,7 @@ function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInp
     const approvedSource = path === "release-gates.json"
       ? normalizeApprovedDogfoodEvidence(source)
       : source;
-    const releaseNote = path === "CHANGELOG.md" || /^docs\/guide\/upgrade\/v[0-9-]+\.md$/.test(path);
+    const releaseNote = path === "CHANGELOG.md" || path === "meta/release-index.json" || /^docs\/guide\/upgrade\/v[0-9-]+\.md$/.test(path);
     return scanPackagedTextViolations(path, approvedSource, { packageName, releaseNote });
   });
 

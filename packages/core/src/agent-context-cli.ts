@@ -6,7 +6,7 @@ import { findPackageJSON } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-type InstalledPackage = { name: string; version: string; root: string; manifest: string };
+export type InstalledPackage = { name: string; version: string; root: string; manifest: string };
 type ScanSummary = { scope: "declarations" | "application" | "package-source"; packageName?: string; scannedFiles: number; fileLimit: number; limitReached: boolean };
 type ScanResult = { hits: Hit[]; summary?: ScanSummary };
 export type SymbolMaturity = "stable" | "experimental" | "testing";
@@ -31,9 +31,9 @@ const applicationFileLimit = 2500;
 const defaultHitLimit = 8;
 const maxHitLimit = 50;
 const apiReportHeading = /^`?packages\/[^/]+\/api\/[^/]+\.api\.md`?$/u;
-const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\nIn a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; maturity is absent when the declaration is not found or when no subpath maturity is known and no `@experimental` tag applies, so read the declaration.\n";
+const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--limit <1..50>] [--json]\n       openlup-context impact --from <version> [--to <version>] [--manifest <path>] [--rail <managed|native>] [--exclude-starter] [--include-dormant] [--format <json|markdown>] [--json] [--root <dir>]\n       openlup-context doctor [--root <dir>] [--receipt <path>] [--json]\n       openlup-context agents-sync [--root <dir>] [--check] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\nIn a symbol's export hit, maturity is the declared maturity (stable, experimental or testing) and deprecated: true marks a deprecated symbol; maturity is absent when the declaration is not found or when no subpath maturity is known and no `@experimental` tag applies, so read the declaration.\n";
 
-function readSortedEntries(directory: string) {
+export function readSortedEntries(directory: string) {
   return readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
     left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
   );
@@ -55,7 +55,7 @@ function resolveScanLimit(limit: number | undefined, fallback: number): number {
   return limit;
 }
 
-function readText(path: string): string | undefined {
+export function readText(path: string): string | undefined {
   try { return readFileSync(path, "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
 }
@@ -101,8 +101,8 @@ export function installedPackageRoots(cwd: string): { name: string; root: string
   });
 }
 
-type LockEntry = { version?: string; link?: boolean; resolved?: string };
-function owningLock(cwd: string): { root: string; entries: Record<string, LockEntry> } | undefined {
+export type LockEntry = { version?: string; link?: boolean; resolved?: string };
+export function owningLock(cwd: string): { root: string; entries: Record<string, LockEntry> } | undefined {
   const applicationRoot = resolve(cwd);
   let root = applicationRoot;
   while (true) {
@@ -121,7 +121,7 @@ function owningLock(cwd: string): { root: string; entries: Record<string, LockEn
   }
 }
 
-function selectedPackages(cwd: string): InstalledPackage[] {
+export function selectedPackages(cwd: string): InstalledPackage[] {
   const packages = installedPackageRoots(cwd).map(({ name, root }) => {
     const manifest = readText(join(root, "package.json"));
     if (!manifest) throw new Error(`Invalid installed package manifest: ${root}`);
@@ -181,12 +181,12 @@ function markdownHits(item: InstalledPackage, fileName: string, query: string, t
   const headings: { index: number; title: string }[] = [];
   let fence: string | undefined;
   for (let index = 0; index < lines.length; index++) {
-    const line = lines[index];
+    const line = lines[index]!;
     const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
     if (fence) { if (marker?.[0] === fence[0] && marker.length >= fence.length && /^ {0,3}(?:`+|~+)\s*$/u.test(line)) fence = undefined; continue; }
     if (marker) { fence = marker; continue; }
     const heading = line.match(/^(#{1,6}) (.+)$/u);
-    if (heading) headings.push({ index, title: heading[2] });
+    if (heading) headings.push({ index, title: heading[2]! });
   }
   if (!headings.length) headings.push({ index: 0, title: fileName });
   const hits: Hit[] = [];
@@ -239,7 +239,7 @@ function querySymbol(query: string): string | undefined {
 }
 
 // onBlock receives each /* ... */ comment, delimiters included, and the offset in the result where its blank stands.
-function stripDeclarationComments(source: string, onBlock?: (block: string, offset: number) => void): string {
+export function stripDeclarationComments(source: string, onBlock?: (block: string, offset: number) => void): string {
   let out = "";
   let index = 0;
   const length = source.length;
@@ -291,7 +291,7 @@ function stripDeclarationComments(source: string, onBlock?: (block: string, offs
   return out;
 }
 
-function isContainedRegularFile(packageRoot: string, realRoot: string, candidate: string): boolean {
+export function isContainedRegularFile(packageRoot: string, realRoot: string, candidate: string): boolean {
   const rel = relative(packageRoot, candidate);
   if (!rel || isAbsolute(rel)) return false;
   const segments = rel.split(sep);
@@ -380,21 +380,12 @@ const linkPrefix = new RegExp(`\\{@(?:link|linkcode|linkplain)(?!${tagNamePart})
 
 /**
  * The @experimental and @deprecated tags of one doc comment, read as the TypeScript compiler reads the comment it
- * attaches to a declaration. A tag is `@` followed by a name, where the `@` starts a line (after whitespace and at
- * most one `*`) or follows a whitespace character and precedes a non-whitespace one, so prose after `@beta` or
- * text before the tag counts. The name runs over letters, digits, `_`, `$` and `-`: `@experimental-x` and
- * `@experimentalx` are other tags, `@experimental.` is the tag, and case matters. Inside a `{@link ...}` there is
- * no tag. Once a tag has started, a backtick opens a code span that ends at the next backtick or at the end of
- * the line, and `@` inside it starts no tag; before the first tag backticks mean nothing. A tag in an `@example`
- * fence still counts. Text that is not a doc comment has no tags. Malformed comments are outside the rule: an
- * unterminated `{@link`, an `@` that names nothing, and the braces of a type after `@param {...}` or `@returns {...}`.
+ * attaches to a declaration.
  */
 export function jsdocTags(block: string): Tags {
   const tags = { ...noTags };
   if (block.length < 5 || !block.startsWith("/**") || block.startsWith("/**/") || !block.endsWith("*/")) return tags;
   const text = block.slice(3, -2);
-  // "bol": at the start of a line; "saw": after the first asterisk of a line, or at the start; "text": in
-  // running text; "tick": in a code span of a tag's text.
   let state: "bol" | "saw" | "text" | "tick" = "saw";
   let inTag = false;
   const readTag = (at: number): number => {
@@ -403,7 +394,6 @@ export function jsdocTags(block: string): Tags {
     if (name === "experimental") tags.experimental = true;
     if (name === "deprecated") tags.deprecated = true;
     inTag = true;
-    // Whitespace, line breaks and the asterisk that opens a following line belong to the tag's header.
     let index = at + 1 + name.length;
     let afterBreak = false;
     for (; index < text.length; index++) {
@@ -457,7 +447,6 @@ type FileFacts = {
   stars: { from: string; tags: Tags }[];
 };
 
-// Later declarators of `export declare const A: T, B: U;`: the names after each top-level comma, up to the semicolon.
 function laterDeclarators(text: string, start: number): string[] {
   const names: string[] = [];
   let depth = 0;
@@ -477,7 +466,6 @@ function laterDeclarators(text: string, start: number): string[] {
   return names;
 }
 
-// Positions of the text that are inside braces or a string literal, so a statement keyword found there is not one.
 function nestedPositions(text: string): Uint8Array {
   const nested = new Uint8Array(text.length);
   let depth = 0;
@@ -494,19 +482,14 @@ function nestedPositions(text: string): Uint8Array {
   return nested;
 }
 
-// One file's top-level exports and the tags of the statement that makes each one, from declaration text. The
-// patterns are the export collector's, matched where a statement of the file can start rather than only at a line start.
 function fileFacts(source: string): FileFacts {
   const blocks: { offset: number; text: string }[] = [];
   const blanks = new Set<number>();
   const cleaned = stripDeclarationComments(source, (text, offset) => {
     blanks.add(offset);
-    // `/**/` is an empty comment, not a doc comment.
     if (text.startsWith("/**") && !text.startsWith("/**/")) blocks.push({ offset, text });
   });
   const nested = nestedPositions(cleaned);
-  // The compiler reads the comments between the previous token and the statement, after the first line break that
-  // follows that token (anywhere in the file's first statement), and only the last doc comment among them counts.
   const leadingTags = (statementStart: number): Tags => {
     let previousEnd = statementStart;
     while (previousEnd > 0 && isBlank(cleaned[previousEnd - 1]!)) previousEnd--;
@@ -519,7 +502,6 @@ function fileFacts(source: string): FileFacts {
     }
     return last === undefined ? noTags : jsdocTags(last);
   };
-  // A statement starts the file, follows a statement that ended with `;` or `}`, or starts a line.
   const startsStatement = (start: number): boolean => {
     let previousEnd = start;
     while (previousEnd > 0 && isBlank(cleaned[previousEnd - 1]!)) previousEnd--;
@@ -552,15 +534,11 @@ function fileFacts(source: string): FileFacts {
 }
 
 const hasTag = (tags: Tags) => tags.experimental || tags.deprecated;
-// A statement's tag applies to the names it exports, unless the declaration they reach carries a tag of its own.
 const inherit = (inner: Tags, statement: Tags): Tags => hasTag(inner) || !hasTag(statement) ? inner : statement;
 
 /**
  * Reads the declared tags of one exported symbol of a subpath from its declaration files, starting at the
- * subpath's entry file: a declaration there decides, else a named re-export continues in its target, else each
- * `export *` target is searched in order. Overloads and merged declarations combine. The walk stays inside
- * the package under the lookup's containment checks and visits at most 256 (file, name) pairs. Undefined means
- * the declaration was not found inside the package, so nothing is known about the symbol.
+ * subpath's entry file.
  */
 export function declaredSymbolMaturity(packageRoot: string, entrypoint: string, symbol: string, subpathMaturity?: string): { maturity?: SymbolMaturity; deprecated?: true } | undefined {
   const realRoot = realpathSync(packageRoot);
@@ -597,7 +575,6 @@ export function declaredSymbolMaturity(packageRoot: string, entrypoint: string, 
   return { ...(maturity ? { maturity } : {}), ...(tags.deprecated ? { deprecated: true as const } : {}) };
 }
 
-// The maturity the package's release gates declare for a subpath, when it has one the lookup knows.
 function subpathMaturity(item: InstalledPackage, subpath: string): SymbolMaturity | undefined {
   const file = join(item.root, "release-gates.json");
   if (!isContainedRegularFile(item.root, realpathSync(item.root), file)) return undefined;
@@ -629,7 +606,7 @@ function declarationHits(item: InstalledPackage, query: string, fileLimit: numbe
         const content = readFileSync(path, "utf8");
         const lines = content.split("\n");
         for (let index = 0; index < lines.length; index++) {
-          if (!symbolPattern.test(lines[index])) continue;
+          if (!symbolPattern.test(lines[index]!)) continue;
           hits.push({ title: symbol, file: path, start: index + 1, end: index + 1, packageName: item.name, score: 20, reason: "declaration occurrence; public import unverified" });
           break;
         }
@@ -701,8 +678,8 @@ function applicationHits(cwd: string, query: string, terms: string[], fileLimit:
       seen++;
       const lines = readFileSync(path, "utf8").split("\n");
       for (let index = 0; index < lines.length; index++) {
-        if (!lines[index].includes("@openlup/") && !terms.some((term) => lines[index].toLocaleLowerCase("en").includes(term))) continue;
-        const score = relevance(basename(path), lines[index], query, terms);
+        if (!lines[index]!.includes("@openlup/") && !terms.some((term) => lines[index]!.toLocaleLowerCase("en").includes(term))) continue;
+        const score = relevance(basename(path), lines[index]!, query, terms);
         if (score > 0) hits.push({ title: relative(cwd, path), file: path, start: index + 1, end: index + 1, packageName: "application", score, reason: "local application source" });
       }
     }
@@ -735,8 +712,8 @@ function packageSourceHits(item: InstalledPackage, query: string, terms: string[
       const lines = readFileSync(path, "utf8").split("\n");
       let best: Hit | undefined;
       for (let index = 0; index < lines.length; index++) {
-        if (!terms.some((term) => lines[index].toLocaleLowerCase("en").includes(term))) continue;
-        const score = relevance(installedPath, lines[index], query, terms);
+        if (!terms.some((term) => lines[index]!.toLocaleLowerCase("en").includes(term))) continue;
+        const score = relevance(installedPath, lines[index]!, query, terms);
         if (score > (best?.score ?? 0)) best = { title: installedPath, file: path, start: index + 1, end: index + 1, packageName: item.name, score, reason: "installed package source" };
       }
       if (best) hits.push(best);
@@ -802,7 +779,7 @@ export function searchContext(
     }
     return true;
   }).slice(0, hitLimit);
-  return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected, scans };
+  return { version: packages[0]!.version, packages: packages.map((item) => item.name), hits: selected, scans };
 }
 
 export function formatContextResult(cwd: string, result: ReturnType<typeof searchContext>): string {
@@ -818,6 +795,125 @@ export function formatContextResult(cwd: string, result: ReturnType<typeof searc
   return `${lines.join("\n")}\n`;
 }
 
+function readOptionValue(args: readonly string[], index: number, flag: string): { value: string; nextIndex: number } {
+  const arg = args[index]!;
+  if (arg.startsWith(`${flag}=`)) {
+    const value = arg.slice(flag.length + 1);
+    if (!value) throw new Error(`${flag} requires a value`);
+    return { value, nextIndex: index };
+  }
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith("--")) throw new Error(`${flag} requires a value`);
+  return { value, nextIndex: index + 1 };
+}
+
+async function runImpactCli(args: readonly string[]): Promise<void> {
+  let root = process.cwd();
+  let from: string | undefined;
+  let to: string | undefined;
+  let manifestPath: string | undefined;
+  let rail: "managed" | "native" | undefined;
+  let excludeStarter = false;
+  let includeDormant = false;
+  let format: "json" | "markdown" = "markdown";
+  for (let index = 1; index < args.length; index++) {
+    const arg = args[index]!;
+    if (arg === "--json") { format = "json"; continue; }
+    if (arg === "--exclude-starter") { excludeStarter = true; continue; }
+    if (arg === "--include-dormant") { includeDormant = true; continue; }
+    if (arg === "--from" || arg.startsWith("--from=")) {
+      const read = readOptionValue(args, index, "--from");
+      from = read.value; index = read.nextIndex; continue;
+    }
+    if (arg === "--to" || arg.startsWith("--to=")) {
+      const read = readOptionValue(args, index, "--to");
+      to = read.value; index = read.nextIndex; continue;
+    }
+    if (arg === "--manifest" || arg.startsWith("--manifest=")) {
+      const read = readOptionValue(args, index, "--manifest");
+      manifestPath = read.value; index = read.nextIndex; continue;
+    }
+    if (arg === "--root" || arg.startsWith("--root=")) {
+      const read = readOptionValue(args, index, "--root");
+      root = read.value; index = read.nextIndex; continue;
+    }
+    if (arg === "--rail" || arg.startsWith("--rail=")) {
+      const read = readOptionValue(args, index, "--rail");
+      if (read.value !== "managed" && read.value !== "native") {
+        throw new Error("--rail must be managed or native");
+      }
+      rail = read.value; index = read.nextIndex; continue;
+    }
+    if (arg === "--format" || arg.startsWith("--format=")) {
+      const read = readOptionValue(args, index, "--format");
+      if (read.value !== "json" && read.value !== "markdown") {
+        throw new Error("--format must be json or markdown");
+      }
+      format = read.value; index = read.nextIndex; continue;
+    }
+    throw new Error(`Unknown option for impact: ${arg}`);
+  }
+  if (!from) throw new Error("impact requires --from <version>");
+  const { analyzeUpgradeImpact, formatUpgradeImpactMarkdown } = await import("./upgrade-impact.js");
+  const report = analyzeUpgradeImpact({
+    root,
+    from,
+    ...(to ? { to } : {}),
+    ...(manifestPath ? { manifestPath } : {}),
+    ...(rail ? { rail } : {}),
+    excludeStarter,
+    includeDormant,
+  });
+  process.stdout.write(format === "json" ? `${JSON.stringify(report)}\n` : formatUpgradeImpactMarkdown(report));
+}
+
+async function runDoctorCli(args: readonly string[]): Promise<void> {
+  let root = process.cwd();
+  let receiptPath: string | undefined;
+  let json = false;
+  for (let index = 1; index < args.length; index++) {
+    const arg = args[index]!;
+    if (arg === "--json") { json = true; continue; }
+    if (arg === "--root" || arg.startsWith("--root=")) {
+      const read = readOptionValue(args, index, "--root");
+      root = read.value; index = read.nextIndex; continue;
+    }
+    if (arg === "--receipt" || arg.startsWith("--receipt=")) {
+      const read = readOptionValue(args, index, "--receipt");
+      receiptPath = read.value; index = read.nextIndex; continue;
+    }
+    throw new Error(`Unknown option for doctor: ${arg}`);
+  }
+  const { runDoctor, formatDoctorText } = await import("./upgrade-impact.js");
+  const report = runDoctor({ root, ...(receiptPath ? { receiptPath } : {}) });
+  process.stdout.write(json ? `${JSON.stringify(report)}\n` : formatDoctorText(report));
+  if (report.verdict === "blocked") process.exitCode = 1;
+}
+
+async function runAgentsSyncCli(args: readonly string[]): Promise<void> {
+  let root = process.cwd();
+  let check = false;
+  let json = false;
+  for (let index = 1; index < args.length; index++) {
+    const arg = args[index]!;
+    if (arg === "--check") { check = true; continue; }
+    if (arg === "--json") { json = true; continue; }
+    if (arg === "--root" || arg.startsWith("--root=")) {
+      const read = readOptionValue(args, index, "--root");
+      root = read.value; index = read.nextIndex; continue;
+    }
+    throw new Error(`Unknown option for agents-sync: ${arg}`);
+  }
+  const { syncAgentsMd } = await import("./upgrade-impact.js");
+  const result = syncAgentsMd({ root, check });
+  if (json) {
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  } else {
+    process.stdout.write(`AGENTS.md: ${result.status} (${result.action})\n`);
+  }
+  if (check && result.status === "drift") process.exitCode = 1;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) { process.stdout.write(usage); return; }
@@ -826,6 +922,9 @@ async function main(): Promise<void> {
     await runMcp(process.cwd(), process.stdin, process.stdout);
     return;
   }
+  if (args[0] === "impact") { await runImpactCli(args); return; }
+  if (args[0] === "doctor") { await runDoctorCli(args); return; }
+  if (args[0] === "agents-sync") { await runAgentsSyncCli(args); return; }
   if (args[0] !== "search") throw new Error(usage.trim());
   let json = false;
   let code = false;

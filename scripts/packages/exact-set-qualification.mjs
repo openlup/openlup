@@ -8,9 +8,10 @@ import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
-import { needsStarterCareUpgrade, previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery, proveSettingsMcp,
-  starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
+import { needsStarterCareUpgrade, previousPublishedSet, proveDistributionCliConsumer, proveStarterRuntimeUpgrade, proveSettingsDiscovery, proveSettingsMcp,
+  StarterRuntimeProofError, ProofFailures, completeStarterRuntimeProof, site, starterCareJourney, starterCareWitness, starterSettingsHost } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
+import { parsePackagesConfig } from './package-manifest-policy.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -172,48 +173,111 @@ export function qualificationReceipt(tag, commit, runnerImage = { image: env.Ima
   return { schemaVersion: 1, setVersion: tag.slice(14), tag, tagCommit: commit, runnerImage, startedAt: new Date().toISOString(), endedAt: null, result: 'FAIL', extraction: null, packages: [], checks: [] };
 }
 
-function prepareReleasedStarter(receipt, temporary, run, candidateManifest = undefined, qualifyProvider = true) {
+export function prepareReleasedStarter(receipt, temporary, run, candidateManifest = undefined, qualifyProvider = true,
+  { legacy = true, labels = [] } = {}) {
+  const context = { legacy, labels };
   const { tag, tagCommit: expectedCommit } = receipt;
   const revision = candidateManifest ? expectedCommit : `refs/tags/${tag}`;
-  assert.equal(run('git', ['rev-parse', `${revision}^{commit}`]).trim(), expectedCommit, 'source commit mismatch');
-  const archive = join(temporary, 'source.tar'), source = join(temporary, 'source'); mkdirSync(source);
-  run('git', ['archive', '--format=tar', `--output=${archive}`, revision]);
-  run('tar', ['-xf', archive, '-C', source]);
-  const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input'); mkdirSync(input);
-  const inventory = json(join(source, 'config/openlup-packages.json')).packages.filter(entry => entry.publish);
-  const packs = candidateManifest && readCurrentPackManifest(source, candidateManifest, expectedCommit);
-  const application = json(join(starter, 'package.json'));
+  const resolvedRevision = site('candidate_revision', 'revision_lookup_failed',
+    () => run('git', ['rev-parse', `${revision}^{commit}`]).trim(), { ...context, exit: true });
+  site('candidate_revision', 'revision_mismatch', () => assert.equal(resolvedRevision, expectedCommit, 'source commit mismatch'), context);
+  const archive = join(temporary, 'source.tar'), source = join(temporary, 'source');
+  site('candidate_source_directory', 'source_directory_create_failed', () => mkdirSync(source), context);
+  site('candidate_git_archive', 'git_archive_failed',
+    () => run('git', ['archive', '--format=tar', `--output=${archive}`, revision]), { ...context, exit: true });
+  site('candidate_tar_extract', 'tar_extract_failed',
+    () => run('tar', ['-xf', archive, '-C', source]), { ...context, exit: true });
+  const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input');
+  const contents = site('candidate_inventory_read', 'source_inventory_read_failed',
+    () => readFileSync(join(source, 'config/openlup-packages.json'), 'utf8'), context);
+  const config = candidateManifest
+    ? site('candidate_inputs', 'source_input_validation_failed', () => parsePackagesConfig(contents), context)
+    : site('released_inventory_decode', 'released_inventory_decode_failed', () => JSON.parse(contents), context);
+  const inventory = [];
+  for (const [ordinal, { name, directory }] of config.packages.filter(entry => entry.publish).entries()) {
+    const entry = { legacy, labels: [...labels, ordinal] };
+    const text = site('candidate_package_metadata_read', 'candidate_package_metadata_read',
+      () => readFileSync(join(source, directory, 'package.json'), 'utf8'), entry);
+    const metadata = site('candidate_package_metadata_decode', 'candidate_package_metadata_decode', () => JSON.parse(text), entry);
+    if (candidateManifest) site('candidate_package_name', 'candidate_package_name',
+      () => assert.equal(metadata.name, name, 'source package name mismatch'), entry);
+    site('candidate_package_version', 'candidate_package_version',
+      () => assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`), entry);
+    inventory.push({ name, version: metadata.version });
+  }
+  const packs = candidateManifest && site('candidate_archived_manifest', 'archived_manifest_validation_failed',
+    () => readCurrentPackManifest(source, candidateManifest, expectedCommit), context);
+  site('candidate_inputs_directory', 'candidate_inputs_directory', () => mkdirSync(input), context);
+  const starterText = site('candidate_starter_metadata_read', 'candidate_starter_metadata_read',
+    () => readFileSync(join(starter, 'package.json'), 'utf8'), context);
+  const application = site('candidate_starter_metadata_decode', 'candidate_starter_metadata_decode',
+    () => JSON.parse(starterText), context);
+  if (!legacy) site('candidate_starter_inputs', 'starter_input_preparation_failed',
+    () => assert(application && typeof application === 'object' && !Array.isArray(application)), context);
   const profile = application.providerQualification;
   const qualification = Boolean(packs && profile && qualifyProvider);
-  delete application.providerQualification;
-  if (qualification) Object.assign(application.dependencies, profile.dependencies);
-  else if (profile) delete application.scripts['provider:qualify'];
-  for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-    for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = packs ? `file:${packs.get(name).path}` : receipt.setVersion;
+  site('candidate_starter_dependencies', 'starter_dependency_preparation_failed', () => {
+    delete application.providerQualification;
+    if (qualification) Object.assign(application.dependencies, profile.dependencies);
+    else if (profile) delete application.scripts['provider:qualify'];
+    for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = packs ? `file:${packs.get(name).path}` : receipt.setVersion;
+    }
+  }, context);
+  const applicationText = site('candidate_starter_metadata_encode', 'candidate_starter_metadata_encode',
+    () => JSON.stringify(application), context);
+  site('candidate_starter_metadata_write', 'candidate_starter_metadata_write',
+    () => writeFileSync(join(input, 'package.json'), applicationText), context);
+
+  site('candidate_lockfile', 'lockfile_generation_failed',
+    () => run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'], input),
+    { ...context, exit: true });
+  const lockfile = join(input, 'package-lock.json');
+  const lockText = site('candidate_generated_lockfile_read', 'candidate_generated_lockfile_read',
+    () => readFileSync(lockfile, 'utf8'), context);
+  const lock = site('candidate_generated_lockfile_decode', 'candidate_generated_lockfile_decode', () => JSON.parse(lockText), context);
+  if (packs) {
+    site('candidate_lockfile_validation', 'generated_lockfile_validation_failed', () => validateCandidateLockfile(lock), context);
+    site('candidate_generated_lockfile_normalize', 'candidate_generated_lockfile_normalize', () => {
+      for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+        for (const name of Object.keys(lock.packages[''][section] ?? {})) if (packs.has(name)) lock.packages[''][section][name] = receipt.setVersion;
+      }
+    }, context);
+    for (const [ordinal, pack] of [...packs.values()].entries()) {
+      const entry = lock.packages[`node_modules/${pack.name}`];
+      site('candidate_generated_pack_integrity', 'candidate_generated_pack_integrity',
+        () => assert.equal(entry?.integrity, pack.integrity), { legacy, labels: [...labels, ordinal] });
+      entry.resolved = `file:${pack.path}`;
+    }
+    const normalized = site('candidate_generated_lockfile_encode', 'candidate_generated_lockfile_encode', () => JSON.stringify(lock, null, 2) + '\n', context);
+    site('candidate_generated_lockfile_write', 'candidate_generated_lockfile_write', () => writeFileSync(lockfile, normalized), context);
   }
-  writeFileSync(join(input, 'package.json'), JSON.stringify(application));
-  run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'], input);
-  const lockfile = join(input, 'package-lock.json'), lock = json(lockfile);
-  if (packs) for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-    for (const name of Object.keys(lock.packages[''][section] ?? {})) if (packs.has(name)) lock.packages[''][section][name] = receipt.setVersion;
+  const packages = [];
+  for (const [ordinal, { name, version }] of inventory.entries()) {
+    const entry = site('candidate_locked_package_version', 'candidate_locked_package_version', () => {
+      const locked = lock.packages[`node_modules/${name}`];
+      if (!locked || locked.version !== version) refuse(`${name}: missing or mismatched locked package`);
+      return locked;
+    }, { legacy, labels: [...labels, ordinal] });
+    packages.push({ name, version, integrity: entry.integrity });
   }
-  if (packs) { for (const pack of packs.values()) lock.packages[`node_modules/${pack.name}`].resolved = `file:${pack.path}`; writeFileSync(lockfile, JSON.stringify(lock, null, 2) + '\n'); }
-  const packages = inventory.map(({ name, directory }) => {
-    const metadata = json(join(source, directory, 'package.json'));
-    assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`);
-    const entry = lock.packages[`node_modules/${name}`];
-    if (!entry || entry.version !== receipt.setVersion) refuse(`${name}: missing or mismatched locked package`);
-    return { name, version: receipt.setVersion, integrity: entry.integrity };
-  });
-  const manifest = join(input, 'manifest.json');
-  writeFileSync(manifest, JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }));
-  const mode = packs ? 'candidate' : readFileSync(join(starter, 'extract.mjs'), 'utf8').includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
-  const extracted = join(temporary, 'application');
-  run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
-    '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', packs ? resolve(candidateManifest) : manifest, '--lockfile', lockfile,
-    ...(qualification ? ['--provider-qualification', 'enabled'] : []),
-    ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
-  receipt.extraction = json(join(extracted, '.starter-origin.json'));
+  const manifest = join(input, 'manifest.json'), extracted = join(temporary, 'application');
+  const manifestText = site('candidate_extraction_manifest_encode', 'candidate_extraction_manifest_encode',
+    () => JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }), context);
+  site('candidate_extraction_manifest_write', 'candidate_extraction_manifest_write', () => writeFileSync(manifest, manifestText), context);
+  const extractor = packs ? '' : site('candidate_extractor_source_read', 'candidate_extractor_source_read',
+    () => readFileSync(join(starter, 'extract.mjs'), 'utf8'), context);
+  const mode = packs ? 'candidate' : extractor.includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
+  site('candidate_extraction', 'starter_extraction_failed',
+    () => run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
+      '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit,
+      '--manifest', packs ? resolve(candidateManifest) : manifest, '--lockfile', lockfile,
+      ...(qualification ? ['--provider-qualification', 'enabled'] : []),
+      ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]),
+    { ...context, exit: true });
+  const originText = site('candidate_extracted_origin_read', 'candidate_extracted_origin_read',
+    () => readFileSync(join(extracted, '.starter-origin.json'), 'utf8'), context);
+  receipt.extraction = site('candidate_extracted_origin_decode', 'candidate_extracted_origin_decode', () => JSON.parse(originText), context);
   return { application: extracted, packages, source };
 }
 
@@ -280,14 +344,15 @@ export function proveInstalledCareUpgrade(run, application, previous, customized
 }
 
 /** Build only the verified extraction; the original Dockerfile remains in its content identity. */
-export function buildQualifiedImage(application, commit, archive) {
+export function buildQualifiedImage(application, commit, archive, reference = imageReference(readCiImage('starter-node'))) {
   const base = readCiImage('starter-node'), name = 'ghcr.io/openlup/neutral-store-starter';
+  assert(base.sources.some(source => imageReference(base, source) === reference), 'qualified_image_base_pin_mismatch');
   const original = readFileSync(join(application, 'Dockerfile'), 'utf8');
   assert(original.startsWith('FROM node:24.21.0-bookworm-slim AS application\n') && original.match(/^FROM /gmu).length === 1, 'qualified_image_base_unexpected');
   const epoch = execFileSync('git', ['show', '-s', '--format=%ct', commit], { cwd: root, encoding: 'utf8' }).trim();
   execFileSync('docker', ['buildx', 'build', '--platform', 'linux/amd64', '--provenance=false', '--sbom=false',
     '--build-arg', `SOURCE_DATE_EPOCH=${epoch}`, '--output', `type=oci,dest=${archive},rewrite-timestamp=true`, '--file', '-', application],
-    { input: original.replace(/^FROM \S+/u, `FROM ${imageReference(base)}`), stdio: ['pipe', 'inherit', 'inherit'] });
+    { input: original.replace(/^FROM \S+/u, `FROM ${reference}`), stdio: ['pipe', 'inherit', 'inherit'] });
   const raw = execFileSync('skopeo', ['inspect', '--raw', `oci-archive:${archive}`]);
   assert.equal(JSON.parse(raw).mediaType, 'application/vnd.oci.image.manifest.v1+json', 'qualified_image_requires_single_manifest');
   return { name, platform: 'linux/amd64', manifestDigest: `sha256:${sha256(raw)}`, baseImageDigest: base.digest };
@@ -325,9 +390,26 @@ export function assertSbomPackages(sbom, packages) {
 }
 
 export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false, canary = false, candidateManifest = undefined) {
-  const receipt = !candidateManifest && (upgrade || schema || bom || canary) ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
-  if (candidateManifest) { assert(upgrade && !schema && !bom && !canary, 'candidate requires adjacent upgrade only'); Object.assign(receipt, { mode: 'candidate', verificationSource: 'candidate, local digest-verified', candidateManifest: resolve(candidateManifest) }); }
+  const candidateResume = Boolean(candidateManifest) && !upgrade && schema && !bom && !canary;
+  const receipt = (!candidateManifest || candidateResume) && (upgrade || schema || bom || canary) ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+  if (candidateManifest) {
+    assert((upgrade || schema) && !bom && !canary, 'candidate supports adjacent upgrade and schema upgrade only');
+    const resolvedManifest = resolve(candidateManifest);
+    if (candidateResume) {
+      assert.equal(receipt.mode, 'candidate', 'candidate schema upgrade requires a candidate adjacent receipt');
+      assert.equal(receipt.candidateManifest, resolvedManifest, 'candidate schema upgrade manifest mismatch');
+    } else {
+      Object.assign(receipt, { mode: 'candidate', verificationSource: 'candidate, local digest-verified', candidateManifest: resolvedManifest });
+    }
+  } else {
+    assert(!(upgrade && schema), 'released qualification runs --upgrade and --schema-upgrade as separate steps');
+    assert.notEqual(receipt.mode, 'candidate', 'released qualification refuses a candidate receipt');
+  }
   const applicationsPath = resolve(receiptPath + '.applications');
+  if (candidateManifest && upgrade && schema) {
+    qualifyReleasedSet(tag, expectedCommit, receiptPath, true, false, false, false, candidateManifest);
+    return qualifyReleasedSet(tag, expectedCommit, receiptPath, false, true, false, false, candidateManifest);
+  }
   if (canary) {
     const qualified = receipt.result === 'PASS';
     receipt.result = 'FAIL'; receipt.endedAt = null;
@@ -388,7 +470,8 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
           database: { connectionString: url.toString() } });
         Object.assign(receipt.schemaUpgrade, proof);
         assert.equal(proof.result, 'PASS', 'released-pair schema compatibility failed');
-        // The BOM step records provisional PASS; canary completion grants final qualification PASS.
+        // Candidate pre-publish qualification completes here; released qualification seals PASS only after BOM + canary.
+        if (candidateManifest) receipt.result = 'PASS';
       } catch (error) { receipt.error = error.message; throw error; }
       finally {
         try { if (admin) { try { await admin.query(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`); } finally { await admin.end(); } } }
@@ -468,7 +551,10 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       if (!env.OPENLUP_QUALIFICATION_DATABASE_URL) refuse('qualification PostgreSQL connection required');
       run(process.execPath, ['--input-type=module', '-e', "import pg from 'pg'; import { env } from 'node:process'; const pool = new pg.Pool({ connectionString: env.OPENLUP_QUALIFICATION_DATABASE_URL }); try { const {rows} = await pool.query('show server_version_num'); if (Math.floor(Number(rows[0].server_version_num) / 10000) !== 17) throw new Error('qualification requires PostgreSQL 17'); } finally { await pool.end(); }"], extracted);
     }
-    if (upgrade) renameSync(temporary, applicationsPath);
+    if (upgrade) {
+      rmSync(applicationsPath, { recursive: true, force: true });
+      renameSync(temporary, applicationsPath);
+    }
     receipt.result = 'PASS';
   } catch (error) { receipt.error = error.message; throw error; }
   finally {
@@ -481,11 +567,149 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
   return receipt;
 }
 
+const runCandidate = (file, args, cwd = root) => execFileSync(file, args, {
+  cwd, env: isolatedConsumerEnv(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+});
+
+function validateCandidateLockfile(lock) {
+  assert.equal(lock.lockfileVersion, 3);
+  assert(lock.packages && typeof lock.packages === 'object' && !Array.isArray(lock.packages));
+  const root = lock.packages[''];
+  assert(root && typeof root === 'object' && !Array.isArray(root));
+}
+
+export function prepareStarterCandidate(commit, manifest, scratch, run = runCandidate, role) {
+  const labels = role === undefined ? [] : [role];
+  const context = { labels };
+  site('candidate_workspace', 'workspace_failed', () => mkdirSync(scratch, { recursive: true }), context);
+  const packs = site('candidate_manifest', 'manifest_validation_failed',
+    () => readCurrentPackManifest(root, manifest, commit), context);
+  const receipt = site('candidate_receipt_init', 'candidate_receipt_init_failed',
+    () => qualificationReceipt('openlup-core-v' + packs.get('@openlup/core').version, commit), context);
+  const { application, packages } = prepareReleasedStarter(receipt, scratch, run, manifest, false, { legacy: false, labels });
+  receipt.packages = packages;
+  const lockfile = join(application, 'package-lock.json');
+  const lockText = site('candidate_extracted_lockfile_read', 'candidate_extracted_lockfile_read',
+    () => readFileSync(lockfile, 'utf8'), context);
+  const lock = site('candidate_extracted_lockfile_decode', 'candidate_extracted_lockfile_decode', () => JSON.parse(lockText), context);
+  site('candidate_extracted_lockfile', 'extracted_lockfile_validation_failed', () => validateCandidateLockfile(lock), context);
+  for (const [ordinal, [name, pack]] of [...packs].entries()) {
+    site('candidate_extracted_pack_integrity', 'candidate_extracted_pack_integrity',
+      () => assert.equal(lock.packages[`node_modules/${name}`]?.integrity, pack.integrity), { labels: [...labels, ordinal] });
+  }
+  const artifacts = join(application, 'artifacts');
+  site('candidate_artifacts_directory', 'candidate_artifacts_directory', () => mkdirSync(artifacts, { recursive: true }), context);
+  for (const [ordinal, [name, pack]] of [...packs].entries()) {
+    const target = `artifacts/openlup-${name.slice(9)}.tgz`;
+    const entry = { labels: [...labels, ordinal] };
+    site('candidate_artifact_copy', 'candidate_artifact_copy', () => cpSync(pack.path, join(application, target)), entry);
+    site('candidate_artifact_lock_binding', 'candidate_artifact_lock_binding',
+      () => { lock.packages[`node_modules/${name}`].resolved = 'file:' + target; }, entry);
+  }
+  const preparedLock = site('candidate_prepared_lockfile_encode', 'candidate_prepared_lockfile_encode', () => JSON.stringify(lock) + '\n', context);
+  site('candidate_prepared_lockfile_write', 'candidate_prepared_lockfile_write', () => writeFileSync(lockfile, preparedLock), context);
+  receipt.buildContextLockfileSha256 = site('candidate_prepared_lockfile_hash', 'candidate_prepared_lockfile_hash', () => sha256(preparedLock), context);
+  const originText = site('candidate_prepared_origin_encode', 'candidate_prepared_origin_encode', () => JSON.stringify({
+    ...receipt.extraction, lockfileSha256: receipt.buildContextLockfileSha256,
+  }, null, 2) + '\n', context);
+  site('candidate_prepared_origin_write', 'candidate_prepared_origin_write',
+    () => writeFileSync(join(application, '.starter-origin.json'), originText), context);
+  site('candidate_install', 'npm_install_failed',
+    () => run('npm', ['ci', '--ignore-scripts', '--no-audit', '--fund=false'], application), { ...context, exit: true });
+  return { application, receipt };
+}
+
+export async function qualifyCandidateCanary(commit, manifest, output) {
+  assert.equal(runCandidate('git', ['rev-parse', 'HEAD']).trim(), commit, 'candidate checkout mismatch');
+  const scratch = mkdtempSync(join(tmpdir(), 'openlup-candidate-image-'));
+  let receipt = { mode: 'candidate-canary', tagCommit: commit, canary: { result: 'FAIL' }, result: 'FAIL' };
+  try {
+    const prepared = prepareStarterCandidate(commit, manifest, scratch);
+    Object.assign(receipt, prepared.receipt);
+    const archive = join(scratch, 'candidate.oci.tar'), started = performance.now();
+    const reference = await pullWithRetry(readCiImage('starter-node'));
+    receipt.image = buildQualifiedImage(prepared.application, commit, archive, reference);
+    receipt.image.baseReference = reference;
+    receipt.image.buildDurationMs = Math.round(performance.now() - started);
+    console.log('Candidate starter image build complete', receipt.image.buildDurationMs + ' ms');
+    const { runStarterImageCanary } = await import('../starter-browser-ci.mjs');
+    await runStarterImageCanary(prepared.application, archive, receipt.image.manifestDigest, receipt.canary, {
+      localImage: env.OPENLUP_STARTER_LOCAL_IMAGE,
+      pull: () => pullWithRetry(readCiImage('test-postgres')),
+    });
+    receipt.result = 'PASS';
+    console.log('Candidate starter retained image PASS');
+  } finally {
+    receipt.endedAt = new Date().toISOString();
+    try { writeFileSync(output, JSON.stringify(receipt, null, 2) + '\n'); }
+    finally { rmSync(scratch, { recursive: true, force: true }); }
+  }
+}
+
+async function qualifyCandidateOccupied(predecessor, previousManifest, candidate, candidateManifest, port) {
+  const failures = new ProofFailures();
+  let started;
+  const checkedOut = site('candidate_checkout', 'checkout_lookup_failed',
+    () => runCandidate('git', ['rev-parse', 'HEAD']).trim(), { exit: true });
+  site('candidate_checkout', 'wrong_checkout', () => assert.equal(checkedOut, candidate, 'candidate checkout mismatch'));
+  const scratch = site('occupied_workspace', 'occupied_workspace_failed',
+    () => mkdtempSync(join(tmpdir(), 'openlup-occupied-upgrade-')));
+  try {
+    const from = prepareStarterCandidate(predecessor, previousManifest, join(scratch, 'from'), runCandidate, 'from');
+    const to = prepareStarterCandidate(candidate, candidateManifest, join(scratch, 'to'), runCandidate, 'to');
+    started = await proveStarterRuntimeUpgrade(from.application, to.application, Number(port), true);
+  } catch (error) { failures.keep(error); }
+  finally {
+    failures.attempt(() => site('candidate_cleanup', 'occupied_workspace_remove_failed',
+      () => rmSync(scratch, { recursive: true, force: true })));
+  }
+  failures.finish();
+  completeStarterRuntimeProof(started);
+}
+
+export function parseQualificationCliArgs(args) {
+  const [tag, commit, receipt, mode, fifth, sixth] = args;
+  if (tag === '--candidate-canary') {
+    if (args.length !== 4) refuse('use --candidate-canary commit manifest receipt');
+    return { kind: 'candidate-canary', commit, manifest: receipt, receipt: mode };
+  }
+  // The occupied arm checks its own arity so the refusal keeps its diagnostic reason.
+  if (tag === '--candidate-occupied') return { kind: 'candidate-occupied', params: args.slice(1) };
+  if (args.length === 3) {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: false, schema: false, bom: false, canary: false, candidateManifest: undefined };
+  }
+  if (args.length === 4 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode)) {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: mode === '--upgrade', schema: mode === '--schema-upgrade', bom: mode === '--bom', canary: mode === '--canary', candidateManifest: undefined };
+  }
+  if (args.length === 5 && mode === '--candidate') {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: true, schema: false, bom: false, canary: false, candidateManifest: fifth };
+  }
+  if (args.length === 6 && mode === '--candidate' && sixth === '--schema-upgrade') {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: true, schema: true, bom: false, canary: false, candidateManifest: fifth };
+  }
+  if (args.length === 6 && mode === '--schema-upgrade' && fifth === '--candidate') {
+    return { kind: 'qualify', tag, commit, receipt, upgrade: false, schema: true, bom: false, canary: false, candidateManifest: sixth };
+  }
+  refuse('use release-tag full-tag-commit receipt-path');
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const [tag, commit, receipt, mode, candidateManifest] = process.argv.slice(2);
-  if (!(process.argv.length === 7 && mode === '--candidate') && process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
-  // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
-  process.exitCode = 1;
-  Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade' || mode === '--candidate', mode === '--schema-upgrade', mode === '--bom', mode === '--canary', candidateManifest))
-    .then(() => { process.exitCode = 0; }, error => { console.error(error); });
+  const parsed = parseQualificationCliArgs(process.argv.slice(2));
+  if (parsed.kind === 'candidate-canary') {
+    await qualifyCandidateCanary(parsed.commit, parsed.manifest, parsed.receipt);
+  } else if (parsed.kind === 'candidate-occupied') {
+    try {
+      site('candidate_occupied', 'invalid_arguments', () => assert.equal(parsed.params.length, 5));
+      await site('candidate_occupied_entry', 'occupied_entry_invariant',
+        () => qualifyCandidateOccupied(...parsed.params));
+    } catch (error) {
+      if (error instanceof StarterRuntimeProofError) process.stderr.write(error.message + '\n');
+      process.exitCode = 1;
+    }
+  } else {
+    // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
+    process.exitCode = 1;
+    Promise.resolve(qualifyReleasedSet(parsed.tag, parsed.commit, parsed.receipt, parsed.upgrade, parsed.schema, parsed.bom, parsed.canary, parsed.candidateManifest))
+      .then(() => { process.exitCode = 0; }, error => { console.error(error); });
+  }
 }

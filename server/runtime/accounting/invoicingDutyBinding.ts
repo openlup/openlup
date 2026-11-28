@@ -9,6 +9,9 @@ import { resolveBundleId } from "../../domains/platform-runtime/platformKernel.j
 export function createInvoicingDutyBinding(env: Record<string, string | undefined>) {
   if (resolveBundleId(env) !== "node-postgres" || !env.DATABASE_URL?.trim()) return null;
   const pool = new Pool({ connectionString: env.DATABASE_URL.trim(), max: 1 });
+  pool.on?.("error", (error: Error) => {
+    console.error(`[openlup/server:invoicing-duty] idle postgres error: ${error instanceof Error ? error.message : String(error)}`);
+  });
   const store = createPostgresInvoiceStore(pool);
   return { ...createIndependentInvoiceDutyBinding({ store }), close: () => pool.end() };
 }

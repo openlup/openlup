@@ -17,13 +17,13 @@ refusals while running it.
 The opt-in subscription reference does not demonstrate automatic renewals,
 fulfillment, failed-renewal recovery or the complete late-delivery journey.
 A renewal date is a planned charge date, not a delivery promise. Follow its
-[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
+[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
 for setup and buyer/account verification.
 
 To evaluate a source reference, choose an immutable release tag and follow that
 revision's README and release notes, including its toolchain and test
 prerequisites. A source build does not start a complete commerce application.
-See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/INSTALL_SUPPORT_POLICY.md)
+See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/.github/INSTALL_SUPPORT_POLICY.md)
 for the installation boundary.
 
 ## Subscription cadence representation
@@ -173,7 +173,7 @@ shadow, review or enforcement policy; a result alone authorizes no order or paym
 Starting the starter host without a runtime database connection leaves its
 native actions unbound. Its lifecycle supplies that connection for the local
 demonstration database; configuration health alone does not establish live
-operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/deploy/neutral-store/README.md)
+operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/deploy/neutral-store/README.md)
 does not establish rollback after a schema or package upgrade. Follow the
 [database upgrade procedure](../upgrade/database-migrations.md) for that boundary.
 
@@ -193,7 +193,7 @@ paid orders awaiting subscription activation.
 ## Starter refusal responses
 
 The app’s `/limits` and `/ograniczenia` pages and unavailable-action buttons use the
-[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/shared/limits.ts).
+[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/examples/neutral-store/shared/limits.ts).
 A visible refusal button displays the code and explanation locally; it does not submit an operation.
 API refusals return an object such as `{"ok":false,"code":"host_binding_required"}`.
 Unknown operations return HTTP 404; other action refusals normally return HTTP 409 unless the handler supplies another status.
@@ -204,11 +204,12 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 
 | Action | What happens | Refusal code |
 | --- | --- | --- |
-| Edit live products, SKUs, price lists, price entries or promotions | These are demonstration seed data; there is no runtime editor. Bundle and catalogue drafts have separate operator editors. | `starter_promotion_write_unavailable` |
+| Edit live products, SKUs, price lists, price entries or promotions directly in the operator UI | Direct writes are unavailable. Bundle and catalogue drafts have separate operator editors. On the marked demo, use the [catalogue activation workflow](../how-to/build/customize-the-starter.md#release-price-and-activate-a-demo-product) for authored products or the [price review workflow](../how-to/build/customize-the-starter.md#change-a-products-price) for eligible live base prices. | `starter_promotion_write_unavailable` for promotion writes |
 | Enter checkout promotion codes | Nonempty promotion-code input is rejected. | `starter_promotion_codes_unsupported` |
 | Publish a catalogue draft from the operator UI | The button displays a local refusal. Use the [operator API to prepare, approve and publish a saved version 3 draft](../how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft). | `starter_catalog_publication_unavailable` |
 | Evaluate a promotion with line targeting | `line_with_variant` and `line_with_category` are stored. The Core promotion evaluator calculates each kind as `order_total`. | — |
 | Purchase an activated bundle | Activation does not make a bundle available to this storefront or checkout. | —; no purchase control |
+| Start a fresh governed purchase after catalogue activation | Published SKUs can list and quote when eligible. Fresh checkout still requires governed purchase authority, which the starter does not enable. | `catalog_admission_quote_authority_required` |
 | List a published SKU without one-time sellability | The starter lists only SKUs sellable for one-time purchase. Enable that mode through the catalogue workflow, then reread the SKU. | `starter_catalogue_one_time_required` |
 | Use lot traceability, locations or stock movements | The starter supplies none of these inventory facilities. The limits-page action refuses. | `starter_inventory_traceability_unavailable` |
 | Run the starter against a hosted database | The supplied installation is a local demonstration database recipe. It provides no hosted-database setup. | —; no hosted installation recipe |
@@ -272,7 +273,7 @@ still sized when sent. Classic, acquisition and unprovable parcels omit it.
 | Submit or read a review without its order-review grant | An account session alone does not authorize the review. | `access_grant_unavailable` for a missing grant; invalid grants return the native review reason |
 | Upload review media | The visible action refuses; a storage binding is required. | `host_binding_required` |
 | Submit research or import normalized orders | Research-case authority and a complete trusted order-import binding are absent. Import admission requires an operator first. There is no real marketplace connector. | `host_binding_required` |
-| Use intake behind a proxy as if each visitor had a separate requester quota | The host hashes its socket peer and ignores forwarding headers, so visitors behind a proxy share that requester identity. | —; shared requester quota |
+| Use intake behind a proxy as if each visitor had a separate requester quota | The host hashes its socket peer and ignores forwarding headers, so visitors behind a proxy share that requester identity. A host behind a trusted proxy can pass `requesterKey` to `composeNativeBindings`: a function that returns a lowercase 64-hex SHA-256 digest of the verified client, or `undefined`. A value that is not a function is refused at composition; a returned value that is not such a digest makes every request answer 503 `starter_dependency_unavailable`, and the host logs `OPENLUP_E_STARTER_REQUESTER_KEY_INVALID` to stderr. | —; shared requester quota |
 | Treat partner inquiry as consent, conversion or a privacy workflow | Inquiry submission does not grant marketing consent or convert a customer. Partner privacy export/erasure is not supplied. | —; intake only |
 | Run risk screening | Risk is disabled; the visible action refuses. | `starter_risk_disabled` |
 
@@ -337,8 +338,21 @@ means an in-flight parcel keeps its current destination.
 | --- | --- | --- |
 | Quote subscription acquisition without a private acceptance key | The host refuses a subscription quote that needs signed acceptance. One-time checkout remains available. | `starter_quote_acceptance_key_required` |
 | Reuse a subscription quote after acceptance-key rotation or changed terms | Refresh the quote and accept its current terms. | `starter_quote_refresh_required` |
-| Reseed a changed price under an existing identity, retain a divergent subscription seed row, or keep another active, open or pending explicit subscription row on the demo list | The installation rolls back. Ask the pricing owner to reconcile changed seed rows with the original demo amounts, identities and validity. Have the owner close other active or open rows or withdraw pending rows while preserving price history. Then rerun the installer. | `starter_price_seed_conflict` |
-| Exceed checkout attempt limits or reuse a command key with a different contact/requester | Admission stops before contact resolution. Default quotas persist in PostgreSQL across restarts. Command-identity bindings remain process-local and reset on restart. | `starter_attempt_limited` |
+| Reseed a changed price under an existing identity, retain a divergent subscription seed row, or keep another active, open or pending explicit subscription row on the demo list | The installation rolls back. Restore the original owned price, discount and rounding inputs if you edited them after seeding. Ask the pricing owner to reconcile divergent rows, close other active or open explicit rows, or withdraw pending rows while preserving price history. You can also rebuild a disposable demo. See `./lifecycle up --json` or `./lifecycle refusals` for the remedy. | `starter_price_seed_conflict` |
+| Exceed checkout attempt limits, or reuse a command key that is not a version 4 UUID with a different contact/requester | Admission stops before contact resolution. Default quotas persist in PostgreSQL across restarts. Command-identity bindings remain process-local and reset on restart. A repeat that completes an interrupted creation passes the same first-attempt limiter and requester binding, so it can also answer this code; a limited repeat of a completed order returns the order without a token instead. | `starter_attempt_limited` |
+| Repeat `checkout.create` under a [version 4 UUID key](../concepts/starter-ownership.md#checkout-key-continuation) with changed details or another email | Nothing changes. The repeat is metered; `resume` pays the order as submitted, `abandon` cancels it so a new key can submit the new details. The managed checkout page raises this code itself, sending nothing, and shows it in a panel that offers both choices. | `starter_checkout_changed` |
+| Repeat changed details under the key of a paid order, or abandon a paid order | Nothing is created or cancelled. A new purchase needs a new key; the managed checkout page offers "Start a different purchase". | `starter_checkout_paid` |
+| Repeat or continue the key of a cancelled, expired or closed order | Check the recovery link for this order before starting a new key. The managed checkout page keeps the key and offers "Start a different purchase". | `starter_checkout_not_payable` |
+| Submit on the managed checkout page while tab storage refuses the write that records the create's dispatch time | Observed: nothing is sent. Cause: the browser refused the write after the page loaded. Fix: the page moves the purchase to page memory under the same key; submit again without reloading, or choose "Start a new action". | `starter_checkout_storage_unavailable` |
+| Send a fresh create that obtains its key lock more than 15 seconds after the host received it | No order, contact or attempt is written. Send the same request again under the same key. | `starter_checkout_request_stale` |
+| `resume` a key with no order | Submit the order; start a new key only after the [finality wait](../concepts/starter-ownership.md#checkout-key-continuation). Before that wait, an abandon on the managed checkout page shows `starter_checkout_in_progress` instead and keeps the key. | `starter_checkout_not_found` |
+| `resume` an order whose creation has not finished, or `abandon` it within a minute of its creation | Send `checkout.create` again with the same details under the same key to complete the creation. Otherwise try again shortly, or abandon it to start over once the creation has been stalled for a minute. The managed checkout page also raises this code itself when an earlier create may still be running: wait and choose again, or submit the original details. | `starter_checkout_in_progress` |
+| `abandon` an unpaid order with a payment attempt ever made, an external reference, or a payment in flight | The order is not cancelled. `resume` and follow its status. The managed checkout page also offers "Start a different purchase": the next submit uses a new key and places a new order, while the earlier order stays open until the store settles it and a payment already started for it may still complete. | `starter_checkout_not_abandonable` |
+| Repeat or `resume` an unpaid order older than its 24-hour recovery link lifetime | Observed: no token is issued and the order stays unpaid. Cause: new continuation links end with the order's 24-hour link lifetime, and an order with a payment attempt cannot be abandoned. Fix: if no payment attempt was made, `abandon` it, then start a new key. Otherwise the order has a payment attempt that the store must settle. Do not start a new key. Ask the store to check the payment and cancel the order (`operator.cancelUnpaid`). The store can cancel only once no payment is in flight; until then the order may still be paid, and the cancel answers `starter_order_transition_conflict`. After the store cancels, this key answers `starter_checkout_not_payable`, and a new key works, including for the same first subscription. While the unpaid draft exists, a new first subscription for the same contact answers `starter_command_conflict`. A client that owns its checkout page follows this. The managed checkout page instead offers the buyer "Start a different purchase", which states that the earlier order stays open and a started payment may still complete. Recheck: after the store cancels, the key answers `starter_checkout_not_payable`, and a create under a new key returns a new order. | `starter_checkout_expired` |
+| `abandon` an unpaid order when nothing could be cancelled | Observed: nothing was cancelled. Cause: the inventory admission gate was busy with another release, the order's subscription link changed while it was being cancelled, or the platform forward `20261128230001_checkout_abandonment_safety_execute_grant.sql` is not applied. Fix: repeat the abandon; if it persists, apply that forward and restart the host. Recheck: `abandon` answers `{ abandoned: true }`. | `starter_purchase_unavailable` |
+| Open the managed checkout page in a browser that blocks tab storage | Observed: a tab-storage notice on the checkout page. Cause: tab storage is blocked or full, so a reload or changed details cannot reach the earlier order. Fix: allow site storage (leave private browsing, free space) or finish without reloading; a retry without a reload still reaches the same order. Recheck: after a reload the notice is gone and the checkout form has no "Start a new action" button. | `starter_storage_unavailable` |
+| Continue the earlier order on the managed checkout page after signing in or out | Observed: the panel cannot reach the earlier order, which is unchanged. If the host answered with an order of the current sign-in state, the page shows that order: a create may have placed it, and an abandon may have cancelled it. Cause: the key is derived from the principal, and the earlier order was created in another sign-in state. Fix: sign in or out as when it was placed, then choose again. Recheck: "Complete payment for the earlier order" returns that order. | `starter_checkout_session_changed` |
+| Sign in or out between a guest create and its retry | The key is derived from the principal, so the retry finds no order and creates a second one. Resolve the purchase first. | —; key bound to the principal |
 | Submit an invalid or overlong purchase email | The configured input bound is checked before contact resolution. | `starter_email_invalid` |
 | Treat demonstration market inputs as real tax or compliance certification | The starter uses fictional market and test-currency inputs. Subscription quotes use the installed pricing and acquisition rules; demonstration prices are not a real-market certification. | —; demonstration inputs only |
 
@@ -353,12 +367,20 @@ onboarding and acceptance keyring. Recreating the demonstration container rotate
 its key, so unsubmitted subscription quotes must refresh. Restarting the same
 container preserves the key.
 
-Exact checkout replay keeps the command key, normalized email and requester and
-uses no further quota. Changed identity under a retained key refuses before
-contact resolution, even with a replaced quota callback. Capacity exhaustion
-fails closed; denied attempts add no quota count. Both quota and identity
-records reset on process restart. Unpurchased-contact retention remains the
-application owner's duty.
+Each repeat under an existing checkout key, and each `checkout.continuation`
+call for a known key, adds one attempt row. It counts in a separate requester
+bucket, so repeats behind one proxy cannot refuse fresh creates, and against
+`maxPerEmail` for that one key, never for the buyer's email. A replaced quota
+callback receives these calls with the idempotency key
+`<derived key>:replay:<uuid>` and the contact `replay:<derived key>`, which is
+not an address. A fresh create passes the derived key, `checkout:<64 hex>`,
+never the header value. A callback that throws refuses the repeat (fail closed), and
+the order is still returned without a token. Repeat rows count toward the
+shared ledger capacity (`maxEntries`) like fresh attempts. Changed identity under a retained
+key refuses before contact resolution, even with a replaced quota callback.
+Capacity exhaustion fails closed; denied attempts add no quota count. Default
+quotas persist in PostgreSQL; command-identity bindings reset on process
+restart. Unpurchased-contact retention remains the application owner's duty.
 
 Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters;
 both demonstrations use 160. Phone and postal-code fields share the native
@@ -626,7 +648,7 @@ private-capture cleanup.
 | Hold without proven provider-exception scope or recovery classification | Zero automatic release, `provider_exception_scope_unproven`. An authorized operator handles the hold. Human and terminal exception holds remain manual. |
 | Erased contact or missing carrier selection | No reconstruction of contact; unknown carrier/service stay null. Supply only independently authorized current evidence. |
 | Missing, malformed or resized pagination metadata | Begin at page zero. A checkpoint-read error aborts before GET and writes no replacement checkpoint; repair storage before retrying. |
-| Delivered observation with no admitted tracking reference | Status evidence persists and an eligible hold can heal, but arrival and alignment remain unchanged. Use an authorized operator tracking/delivery command or a later observation carrying a reference. |
+| Delivered observation without an incoming tracking reference | A verified webhook can record arrival for an exactly correlated parcel with an existing unambiguous provider-bound reference and a proven occurrence time. Without that evidence, arrival and alignment stay unchanged. Use the [authorized tracking and delivery path](../how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation) when the provider cannot supply sufficient evidence. |
 
 Native intake composes existing commands and the job ledger; it installs no
 scheduler. Public tracking access, label create/void, independent split shipments,

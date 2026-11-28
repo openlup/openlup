@@ -93,6 +93,7 @@ export const NON_ADAPTER_ENTRIES = [
   "shipping",
   "shipping/contracts",
   "storefront",
+  "storefront/testing",
 ] as const;
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
@@ -1033,7 +1034,8 @@ import {promises as fs} from "node:fs";
 import {join} from "node:path";
 import {pathToFileURL} from "node:url";
 import * as lifecycle from "@openlup/platform/lifecycle";
-assert.deepEqual(Object.keys(lifecycle).sort(),["APP_VERIFICATION_BOUNDARY","AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade","verifyApp"]);
+assert.deepEqual(Object.keys(lifecycle).sort(),["APP_VERIFICATION_BOUNDARY","AppUpgradeConflictError","applyAppUpgrade","digestStorefrontFiles","inspectLegacyPostgresInstallRoles","parseStorefrontProofFile","parseStorefrontVerdict","planAppUpgrade","storefrontCapabilities","storefrontProofFileJsonSchema","storefrontVerdictJsonSchema","verifyApp"]);
+assert.ok(Object.isFrozen(lifecycle.storefrontCapabilities)&&lifecycle.storefrontCapabilities.length>0&&lifecycle.storefrontCapabilities.every((entry)=>typeof entry.level==="string"));
 const roleRequest={migrationLogin:"migration",runtimeLogin:"migration",roleMode:"installer-managed"};
 const role={name:"migration",login:true,superuser:true,inherit:false,createRole:false,createDatabase:false,replication:false,bypassRls:false};
 const observed={database:"synthetic",currentUser:"migration",sessionUser:"migration",roles:[role],memberships:[]};
@@ -1979,8 +1981,8 @@ export function provePortabilityPostgres(consumer: string, connectionString: str
   consumerNode(consumer, PORTABILITY_CONSUMER_PROOF, [connectionString]);
 }
 
-/** Runs wholly inside the installed consumer; canonical expectations arrive as inert JSON. */
-const PLATFORM_MIGRATION_CONSUMER_PROOF = String.raw`
+/** Runs wholly inside the installed consumer; canonical expectations arrive via a staged JSON file. */
+export const PLATFORM_MIGRATION_CONSUMER_PROOF = String.raw`
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, unlinkSync, realpathSync } from "node:fs";
@@ -1993,8 +1995,8 @@ assert.throws(() => createPlatformPostgresMigrationRunner({connectionString:"unu
   get catalog() { throw new Error("catalogue was read before selection admission"); },
   get poolFactory() { throw new Error("pool factory was read before selection admission"); },
 }), /platform migration installation is required/);
-const [connectionString, generation, roleMode, expectedJson] = process.argv.slice(2);
-const canonical = JSON.parse(expectedJson);
+const [connectionString, generation, roleMode, expectedManifestPath] = process.argv.slice(2);
+const canonical = JSON.parse(readFileSync(expectedManifestPath, "utf8"));
 const plan = generation === "qualified-v2" ? canonical.qualified : canonical.qualifiedAdmin;
 const expected = [plan.baseline, ...plan.forward];
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.resolve("@openlup/platform/migrations")))));
@@ -2060,20 +2062,25 @@ process.exit(0);
 /** Real installed-chain proof: each selection gets a fresh PG16 cluster. */
 export function provePackagedPlatformMigrations(consumer: string): void {
   const canonical = readFileSync(join(root, "config/platform-migration-manifest.json"), "utf8");
-  for (const generation of ["qualified-v2", "qualified-admin"]) for (const mode of ["installer-managed", "operator-provisioned"]) {
-    const name = `openlup-packaged-migrations-${randomUUID()}`;
-    const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
-    try {
-      docker(["run", ...disposableLabelArgs(), "--detach", "--rm", "--name", name, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", pinnedTestPostgresImage()]);
-      const port = docker(["port", name, "5432/tcp"]).split(":").at(-1)!;
-      const url = `postgresql://postgres@127.0.0.1:${port}/postgres`;
-      command(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e", `
-        import { waitForPostgresTcpReady } from ${JSON.stringify(pathToFileURL(join(root, "tests/helpers/postgresContainer.ts")).href)};
-        if (!await waitForPostgresTcpReady(process.argv[1])) throw new Error("Packaged migration PG16 unavailable");
-      `, url], root, isolatedConsumerEnv());
-      process.stdout.write(consumerNode(consumer, PLATFORM_MIGRATION_CONSUMER_PROOF, [url, generation, mode, canonical]));
-    } finally { docker(["rm", "--force", "--volumes", name]); }
-  }
+  // Stage the canonical manifest as a file inside the consumer dir so argv never hits Linux MAX_ARG_STRLEN (E2BIG).
+  const expectedManifestPath = join(consumer, "expected-platform-migration-manifest.json");
+  writeFileSync(expectedManifestPath, canonical);
+  try {
+    for (const generation of ["qualified-v2", "qualified-admin"]) for (const mode of ["installer-managed", "operator-provisioned"]) {
+      const name = `openlup-packaged-migrations-${randomUUID()}`;
+      const docker = (args: string[]) => command("docker", args, root, isolatedConsumerEnv()).trim();
+      try {
+        docker(["run", ...disposableLabelArgs(), "--detach", "--rm", "--name", name, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", pinnedTestPostgresImage()]);
+        const port = docker(["port", name, "5432/tcp"]).split(":").at(-1)!;
+        const url = `postgresql://postgres@127.0.0.1:${port}/postgres`;
+        command(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e", `
+          import { waitForPostgresTcpReady } from ${JSON.stringify(pathToFileURL(join(root, "tests/helpers/postgresContainer.ts")).href)};
+          if (!await waitForPostgresTcpReady(process.argv[1])) throw new Error("Packaged migration PG16 unavailable");
+        `, url], root, isolatedConsumerEnv());
+        process.stdout.write(consumerNode(consumer, PLATFORM_MIGRATION_CONSUMER_PROOF, [url, generation, mode, expectedManifestPath]));
+      } finally { docker(["rm", "--force", "--volumes", name]); }
+    }
+  } finally { rmSync(expectedManifestPath, { force: true }); }
 }
 
 /** Setup uses the existing canonical runner; subjects resolve only from installed artifacts. */
@@ -3021,6 +3028,15 @@ assert.equal(typeof (await import("@openlup/platform/tax")).compareTaxRecalculat
     compileConsumer(consumer, [...entries, ...ADAPTER_ENTRIES], compiler);
     compileOperationsConsumer(consumer, compiler);
     proveInstalledAdapters(consumer);
+    const outboxPack = packs.get("@openlup/outbox");
+    if (!outboxPack) throw new Error("Verified manifest has no @openlup/outbox tarball");
+    const outboxBytes = readFileSync(outboxPack.path);
+    if (createHash("sha256").update(outboxBytes).digest("hex") !== outboxPack.sha256 || `sha512-${createHash("sha512").update(outboxBytes).digest("base64")}` !== outboxPack.integrity) throw new Error("Verified artifact changed before use: @openlup/outbox");
+    const outboxTarball = join(artifacts, "outbox.tgz");
+    writeFileSync(outboxTarball, outboxBytes);
+    install([outboxTarball]);
+    assertInstalledPackages(consumer, ["@openlup/outbox"]);
+    proveHeavyManagedConsumer(consumer);
     proveDockerPostgres(consumer, environment);
     const starterOutcome = await starterDone;
     if (shuttingDownBySignal) return;
@@ -3274,5 +3290,288 @@ assert.equal(contribution.ports["@openlup/platform/fulfillment:dispatch"],bindin
 const unsupported=createNativeUnsupportedFulfillmentPorts();
 assert.equal(await unsupported.listCommerceFulfillmentOrders({page:1,pageSize:25}),FULFILLMENT_NATIVE_UNSUPPORTED);
 assert.equal(await unsupported.getCommerceFulfillmentOrderDetail({orderId:"order-a"}),FULFILLMENT_NATIVE_UNSUPPORTED);
+`);
+}
+
+/** Heavy managed consumer canary: standalone non-starter subpath surface across platform & outbox. */
+export function proveHeavyManagedConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { OMS_OPERATIONAL_LADDER, resolveOmsOperationalState } from "@openlup/platform/commerce";
+import { readInvoicePaymentEvidence } from "@openlup/platform/invoicing";
+import { createPostgresMigrationRunner } from "@openlup/platform/migrations";
+import { createNodeHost } from "@openlup/platform/composition";
+import { verifyPaymentAttemptNow } from "@openlup/platform/payments";
+import { runOutboxDispatchWorker, composeIndependentHandlers, uniqueRegistry } from "@openlup/outbox";
+
+const installedRoot = new URL("./node_modules/", import.meta.url).href;
+for (const specifier of [
+  "@openlup/platform/commerce",
+  "@openlup/platform/invoicing",
+  "@openlup/platform/migrations",
+  "@openlup/platform/composition",
+  "@openlup/platform/payments",
+  "@openlup/outbox",
+]) {
+  assert(import.meta.resolve(specifier).startsWith(installedRoot), "Heavy managed import escaped consumer: " + specifier);
+}
+
+// 1. @openlup/platform/commerce: OMS_OPERATIONAL_LADDER structure & resolveOmsOperationalState.
+assert(Array.isArray(OMS_OPERATIONAL_LADDER) && OMS_OPERATIONAL_LADDER.length > 0, "OMS_OPERATIONAL_LADDER must be non-empty");
+for (const rung of OMS_OPERATIONAL_LADDER) {
+  assert.equal(typeof rung.id, "string");
+  assert.equal(typeof rung.sqlPredicate, "string");
+  assert.equal(typeof rung.attentionReason, "string");
+  assert.equal(typeof rung.nextAction, "string");
+  assert.equal(typeof rung.matches, "function");
+}
+const rungIds = OMS_OPERATIONAL_LADDER.map(r => r.id);
+assert(rungIds.indexOf("terminal_order") < rungIds.indexOf("active_hold"), "terminal_order must precede active_hold");
+assert(rungIds.indexOf("active_hold") < rungIds.indexOf("payment_not_succeeded"), "active_hold must precede payment_not_succeeded");
+const missingAddressRung = OMS_OPERATIONAL_LADDER.find(r => r.id === "missing_shipping_address");
+assert.equal(missingAddressRung?.sqlPredicate, "shipping_address_id IS NULL");
+const baseOrder = {
+  orderStatus: "paid",
+  activeHoldCount: 0,
+  paymentStatus: "succeeded",
+  hasShippingAddress: true,
+  inventoryStatus: "reserved",
+  fulfillmentStatus: "delivered",
+  fulfillmentAllowed: true,
+  accountingStatus: "issued",
+};
+assert.deepEqual(resolveOmsOperationalState(baseOrder), { attentionReason: "none", nextAction: "none" });
+assert.deepEqual(
+  resolveOmsOperationalState({ ...baseOrder, orderStatus: "cancelled", activeHoldCount: 2, paymentStatus: "failed", hasShippingAddress: false }),
+  { attentionReason: "none", nextAction: "none" },
+);
+assert.deepEqual(
+  resolveOmsOperationalState({ ...baseOrder, hasShippingAddress: false }),
+  { attentionReason: "missing_shipping_address", nextAction: "review_address" },
+);
+
+// 2. @openlup/platform/invoicing: readInvoicePaymentEvidence identity-mismatch contract.
+const invoicePayment = { provider: "managed-psp", providerPaymentId: "pay-ref-1" };
+const mismatch = await readInvoicePaymentEvidence(invoicePayment, {
+  readPayment: async () => { throw { code: "provider_payment_identity_mismatch" }; },
+});
+assert.equal(mismatch.providerStatus, "unknown");
+assert.equal(mismatch.providerAmountCents, null);
+assert.equal(mismatch.providerCurrency, null);
+assert.equal(mismatch.providerEvidence.unavailableReason, "provider_payment_identity_mismatch");
+const plainError = await readInvoicePaymentEvidence(invoicePayment, {
+  readPayment: async () => { throw new Error("provider_payment_identity_mismatch"); },
+});
+assert.equal(plainError.providerStatus, "unavailable");
+assert.equal(plainError.providerEvidence.unavailableReason, "provider_read_failed");
+let missingIdCalls = 0;
+const missingId = await readInvoicePaymentEvidence(
+  { ...invoicePayment, providerPaymentId: null },
+  { readPayment: async () => { missingIdCalls++; return { status: "succeeded", providerStatus: "settled", amountMinor: 100, currency: "XTS" }; } },
+);
+assert.equal(missingIdCalls, 0);
+assert.equal(missingId.providerStatus, "unavailable");
+assert.equal(missingId.providerEvidence.unavailableReason, "provider_payment_id_missing");
+
+// 3. @openlup/platform/migrations: createPostgresMigrationRunner exported API & input guards.
+assert.equal(typeof createPostgresMigrationRunner, "function");
+const syntheticSource = {
+  readMigrations: () => ({ migrations: [], errors: [] }),
+  readManifest: () => null,
+  evaluate: () => [],
+};
+const runner = createPostgresMigrationRunner(
+  { connectionString: "" },
+  { lockName: "managed-canary", source: syntheticSource, catalogProjectionPayload: async () => "{}" },
+);
+assert.equal(typeof runner.status, "function");
+assert.equal(typeof runner.apply, "function");
+await assert.rejects(() => runner.status(), /connectionString|DATABASE_URL|required/i);
+assert.throws(
+  () => createPostgresMigrationRunner(
+    { connectionString: "postgresql://unused.invalid/managed" },
+    { lockName: "managed-canary", source: syntheticSource, catalogProjectionPayload: async () => "{}", pool: {}, poolFactory: () => ({}) },
+  ),
+  /postgres_pool_and_factory_mutually_exclusive/,
+);
+
+// 4. @openlup/platform/composition: createNodeHost API & bundle readiness contract.
+assert.equal(typeof createNodeHost, "function");
+let withHttp = true;
+const host = createNodeHost({
+  composeBundle: () => ({
+    id: "managed-canary",
+    descriptor: { readReadiness: () => ({ ok: true }) },
+    ports: withHttp ? { http: { kind: "node" } } : {},
+  }),
+  createHttpRuntime: () => ({ listen: async () => ({ port: 0, close: async () => {} }) }),
+  loadSchedulerJobs: () => [],
+});
+assert.equal(typeof host.assertBundleReady, "function");
+assert.equal(typeof host.serveNode, "function");
+assert.deepEqual(host.assertBundleReady({}), { bundleId: "managed-canary" });
+withHttp = false;
+assert.throws(() => host.assertBundleReady({}), /has no http runtime/);
+
+// 5. @openlup/platform/payments: verifyPaymentAttemptNow canonical reconciliation contract.
+assert.equal(typeof verifyPaymentAttemptNow, "function");
+const baseSnapshot = {
+  orderId: "order-1",
+  orderClientId: "client-1",
+  paymentIntentId: "intent-1",
+  paymentAttemptId: "attempt-1",
+  paymentId: "payment-1",
+  provider: "managed-psp",
+  attemptStatus: "processing",
+  intentStatus: "processing",
+  providerAttemptId: "prov-pay-1",
+  intentProviderPaymentId: null,
+  providerSessionId: null,
+  amountMinor: 999,
+  currency: "XTS",
+  orderMode: "one_time",
+  localUpdatedAt: "2026-11-27T00:00:00.000Z",
+  captureReviewRequired: false,
+};
+let applyCalls = 0, readCalls = 0;
+const reviewed = await verifyPaymentAttemptNow({
+  snapshot: { ...baseSnapshot, captureReviewRequired: true },
+  applyPort: {
+    applyTerminalResult: async () => { applyCalls++; throw new Error("unexpected apply"); },
+    readCaptureReview: async () => false,
+  },
+  providers: {
+    "managed-psp": { readPayment: async () => { readCalls++; throw new Error("unexpected read"); } },
+  },
+  now: () => new Date("2026-11-27T00:00:00.000Z"),
+});
+assert.deepEqual(reviewed, { status: "manual_review", verified: true, applied: false, providerPaymentId: null, attempt: null });
+assert.equal(applyCalls, 0);
+assert.equal(readCalls, 0);
+
+let lastApplied = null;
+const settled = await verifyPaymentAttemptNow({
+  snapshot: baseSnapshot,
+  applyPort: {
+    applyTerminalResult: async input => {
+      applyCalls++;
+      lastApplied = input;
+      return { correctionStatus: "corrected", replayed: false, paymentResult: { kind: "settled" } };
+    },
+    readCaptureReview: async () => false,
+  },
+  providers: {
+    "managed-psp": {
+      readPayment: async () => {
+        readCalls++;
+        return {
+          status: "succeeded",
+          providerStatus: "paid",
+          amountMinor: 999,
+          capturedAmountBasis: "provider_capture_v1",
+          currency: "XTS",
+          occurredAt: "2026-11-27T00:00:00.000Z",
+          failureReason: null,
+          rawPayload: {},
+        };
+      },
+    },
+  },
+  now: () => new Date("2026-11-27T00:00:00.000Z"),
+});
+assert.equal(settled.status, "succeeded");
+assert.equal(settled.verified, true);
+assert.equal(settled.applied, true);
+assert.equal(settled.providerPaymentId, "prov-pay-1");
+assert.equal(applyCalls, 1);
+assert.equal(readCalls, 1);
+assert.equal(lastApplied?.expectedOrderId, "order-1");
+
+const amountMismatch = await verifyPaymentAttemptNow({
+  snapshot: baseSnapshot,
+  applyPort: {
+    applyTerminalResult: async () => { applyCalls++; throw new Error("mismatch must not apply"); },
+    readCaptureReview: async () => false,
+  },
+  providers: {
+    "managed-psp": {
+      readPayment: async () => ({
+        status: "succeeded",
+        providerStatus: "paid",
+        amountMinor: 500,
+        capturedAmountBasis: "provider_capture_v1",
+        currency: "XTS",
+        failureReason: null,
+        rawPayload: {},
+      }),
+    },
+  },
+  now: () => new Date("2026-11-27T00:00:00.000Z"),
+});
+assert.equal(amountMismatch.status, "manual_review");
+assert.equal(amountMismatch.applied, false);
+assert.equal(applyCalls, 1);
+
+// 6. @openlup/outbox: composeIndependentHandlers + runOutboxDispatchWorker.
+assert.equal(typeof runOutboxDispatchWorker, "function");
+assert.equal(typeof composeIndependentHandlers, "function");
+const executed = [];
+const composed = composeIndependentHandlers([
+  { eventType: "order.paid", timeoutMs: 2000, handle: async () => { executed.push("a"); return { kind: "processed", detail: { lane: "a" } }; } },
+  { eventType: "order.paid", timeoutMs: 2000, handle: async () => { executed.push("b"); return { kind: "processed", detail: { lane: "b" } }; } },
+], {
+  maxConcurrency: 2,
+  timeoutMs: 5000,
+  projectProcessedDetail: outcomes => ({ destinations: outcomes.length }),
+});
+let claimedOnce = false, markedMetadata = null;
+const workerResult = await runOutboxDispatchWorker({
+  store: {
+    claimBatch: async () => {
+      if (claimedOnce) return [];
+      claimedOnce = true;
+      return [{
+        id: "11111111-1111-4111-8111-111111111111",
+        created_at: "2026-11-27T00:00:00.000Z",
+        available_at: "2026-11-27T00:00:00.000Z",
+        processed_at: null,
+        aggregate_type: "order",
+        aggregate_id: "22222222-2222-4222-8222-222222222222",
+        event_type: "order.paid",
+        idempotency_key: "managed-canary-key",
+        status: "processing",
+        attempts: 1,
+        payload: { orderId: "order-1" },
+        error: null,
+        metadata: { claimToken: "claim-token-1" },
+      }];
+    },
+    markProcessed: async input => {
+      markedMetadata = input.metadata;
+      return { applied: true };
+    },
+    markFailed: async () => { throw new Error("unexpected markFailed"); },
+    releaseUnprocessed: async () => 0,
+    hasPendingEventType: async () => false,
+  },
+  registry: uniqueRegistry([composed]),
+  config: {
+    batchSize: 10,
+    visibilitySeconds: 300,
+    maxAttempts: 5,
+    backoffBaseSeconds: 30,
+    backoffCapSeconds: 300,
+    snoozeSeconds: 60,
+    maxSnoozes: 3,
+    softBudgetMs: 10000,
+  },
+  knownEventTypes: ["order.paid"],
+});
+assert.deepEqual(executed.sort(), ["a", "b"]);
+assert.equal(workerResult.claimed, 1);
+assert.equal(workerResult.processed, 1);
+assert.equal(workerResult.batches, 1);
+assert.deepEqual(markedMetadata, { destinations: 2 });
+console.log("Heavy managed consumer canary PASS");
 `);
 }

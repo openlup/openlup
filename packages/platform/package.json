@@ -1,12 +1,19 @@
 {
   "name": "@openlup/platform",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": false,
-  "description": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduler, storage, data gateways and bundle composition.",
+  "description": "OpenLup headless subscription commerce platform for Node.js and PostgreSQL: checkout, payments, subscriptions, fulfillment, invoicing, promotions, and HTTP/BFF runtime.",
   "keywords": [
     "openlup",
+    "ecommerce",
+    "headless-commerce",
     "subscription",
     "subscription-commerce",
+    "checkout",
+    "payments",
+    "fulfillment",
+    "invoicing",
+    "promotions",
     "d2c",
     "postgresql",
     "bff",
@@ -52,7 +59,7 @@
     "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update"
   },
   "peerDependencies": {
-    "@openlup/core": "1.3.0",
+    "@openlup/core": "1.4.0",
     "pg": "^8.22.0",
     "@aws-sdk/client-s3": "^3.1144.0",
     "@types/pg": "^8.20.0"
@@ -306,6 +313,11 @@
       "types": "./dist/storefront/index.d.ts",
       "import": "./dist/storefront/index.js",
       "default": "./dist/storefront/index.js"
+    },
+    "./storefront/testing": {
+      "types": "./dist/storefront/testing/index.d.ts",
+      "import": "./dist/storefront/testing/index.js",
+      "default": "./dist/storefront/testing/index.js"
     },
     "./payments": {
       "types": "./dist/payments/index.d.ts",

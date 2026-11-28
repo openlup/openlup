@@ -745,11 +745,7 @@ export interface CustomerPreferencePolicy {
     messages?: {
         pickupPointRequired?: string;
     };
-    methods: {
-        instant: string;
-        card: string;
-        transfer: string;
-    };
+    methods: Record<string, string>;
     providers: {
         warehouse: string;
         carrier: string;
@@ -801,9 +797,9 @@ export declare function createCustomerPreferenceSchemas(policy: CustomerPreferen
             subscription: "subscription";
             any: "any";
         }>;
-        methodKind: z.ZodEnum<{
+        methodKind: z.ZodUnion<readonly [z.ZodEnum<{
             [x: string]: string;
-        }>;
+        }>, z.ZodString]>;
         lastSelectedAt: z.ZodISODateTime;
     }, z.core.$strict>;
     deliveryResponse: z.ZodObject<{
@@ -1050,6 +1046,33 @@ export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from '
 export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
 export type { CarrierRateQuoteContractVersion, CarrierRateAddress, CarrierRateParcel, CarrierRateQuoteRequest, CarrierRateTransitEstimate, CarrierRateOption, CarrierRateRefusalReason, CarrierRateQuoteResult, CarrierRateCapabilities, CarrierRateQuotePort, } from "./contracts/carrierRate.js";
 export { CARRIER_RATE_QUOTE_CONTRACT_VERSION, CARRIER_RATE_REFUSAL_REASONS, carrierRateCapabilitiesSchema, carrierRateOptionSchema, carrierRateQuoteResultSchema, projectCarrierRateStaticCapabilities, validateCarrierRateRequestAgainstCapabilities, sortCarrierRateOptions, selectCheapestCarrierRate, } from "./carrierRate.js";
+export { DEFAULT_SHIPPING_PAYMENT_METHOD_PREFERENCES, validateShippingPaymentMethodPreferences, installShippingPaymentMethodPreferencesPolicy, readShippingPaymentMethodPreferencesOverride, readShippingPaymentMethodPreferencesPolicy, } from "./paymentMethodPreferencesPolicy.js";
+export type { ShippingPaymentMethodPreferencesPolicy } from "./paymentMethodPreferencesPolicy.js";
+```
+## dist/shipping/paymentMethodPreferencesPolicy.d.ts
+
+```ts
+/** @experimental Default allowed payment method preference codes when no `shipping_payment_method_preferences` setting row is installed. */
+export declare const DEFAULT_SHIPPING_PAYMENT_METHOD_PREFERENCES: readonly string[];
+/** @experimental Installed policy configuring the allowed payment method preference codes for new preference writes. */
+export interface ShippingPaymentMethodPreferencesPolicy {
+    revision: string;
+    methodKinds: string[];
+}
+interface Executor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+/** @experimental Validate a `shipping_payment_method_preferences` policy document using SQL-equivalent rules. */
+export declare function validateShippingPaymentMethodPreferences(value: unknown): ShippingPaymentMethodPreferencesPolicy;
+/** @experimental Install the shipping payment method preferences policy on a host-owned write-capable connection. */
+export declare function installShippingPaymentMethodPreferencesPolicy(db: Executor, policy: ShippingPaymentMethodPreferencesPolicy): Promise<void>;
+/** @experimental Read an explicit `shipping_payment_method_preferences` override, returning `undefined` when absent. */
+export declare function readShippingPaymentMethodPreferencesOverride(db: Executor): Promise<ShippingPaymentMethodPreferencesPolicy | undefined>;
+/** @experimental Read the installed `shipping_payment_method_preferences` policy or the default absence fallback. */
+export declare function readShippingPaymentMethodPreferencesPolicy(db: Executor): Promise<ShippingPaymentMethodPreferencesPolicy>;
+export {};
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 

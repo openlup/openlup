@@ -9,12 +9,12 @@ operator handlers.
 ## Choose the imports
 
 Use `@openlup/platform/fulfillment/native` for native bindings and stores; see
-its [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/fulfillment-native.api.md). Use
+its [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/fulfillment-native.api.md). Use
 `@openlup/platform/fulfillment` for dispatch composition and captures,
 `@openlup/platform/fulfillment/contracts` for request and port types, and
 `@openlup/platform/composition` for contribution composition. Consult the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/fulfillment-contracts.api.md)
-and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/composition.api.md) for those inventories. Install the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/fulfillment-contracts.api.md)
+and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/composition.api.md) for those inventories. Install the
 [complete selected catalogue](../../upgrade/database-migrations.md#check-application-compatibility),
 including the native dispatch outcome routines, before selecting native commands.
 
@@ -153,11 +153,16 @@ Provider exceptions create occurrence-idempotent holds without changing parcel
 status. Newer eligible evidence can release only a proven machine exception hold;
 terminal exceptions, unknown chronology and human holds remain manual cases.
 
-A delivered observation with no admitted tracking reference records status but
-writes no arrival or alignment. It can still heal an eligible hold. An authorized
-operator tracking/delivery command, or a later observation with a reference, is
-the manual completion path. Delivered evidence suppresses a late dispatched
-notice; a handoff with zero references creates no dispatched notice key.
+A verified delivered webhook may omit the tracking number. Native intake can
+commit arrival for an exactly correlated parcel with one existing provider-bound
+tracking reference and a proven occurrence time. The receipt then reports
+`deliveryReadBack: true`. When only the external dispatch identity matches, the
+first receipt must pin its existing binding to the order's sole original parcel.
+An ambiguous association, missing proof or a contradictory terminal event leaves
+the arrival unchanged. Use the authorized
+operator tracking/delivery command if the carrier cannot supply sufficient
+evidence. Eligible hold healing remains independent. Delivered evidence
+suppresses a late dispatched notice.
 
 Call `reconcile` from your existing scheduler with its job ledger, job name,
 invocation and page size. It claims the lease, reads the latest terminal

@@ -396,6 +396,38 @@ and call `projectPublishedCatalogOfferPage` from `@openlup/platform/catalog`.
 
 ### Verify definition receipts in your host
 
+If you installed an adopter pack with the starter, read the exact pack `id`, pack
+`version` and type pairs from a successful `./lifecycle up --json` report. From
+the same Compose project, copy that pack's build into a private server-side
+directory. For the stationery pack at version 1:
+
+```sh
+(
+  umask 077
+  build_dir=$(mktemp -d "${TMPDIR:-/tmp}/openlup-pack-build.XXXXXX") || exit 1
+  pack_id=stationery
+  pack_version=1
+  filename="${pack_id}@${pack_version}.json"
+  PROJECT=$( (cd .context && cat compose-project) 2>/dev/null) && [ -n "$PROJECT" ] ||
+    { printf '%s\n' 'Run ./lifecycle up first.' >&2; exit 1; }
+  docker compose --project-name "$PROJECT" exec -T --user node --workdir /application/.context application \
+    cat "catalogue-builds/packs/$filename" > "$build_dir/$filename" || exit 1
+  printf '%s\n' "$build_dir/$filename"
+)
+```
+
+The envelope contains `{ pack, asset, receipt }`. Decode `asset` from base64 to
+recover the exact portable rules bytes. A failed copy supplies no evidence.
+For a missing build, restore the declared version and tested rules, then rerun
+`./lifecycle up --json` in the same project before copying again. The built-in
+starter type uses `<type-version>.json` one directory above `packs/`, with a
+separate `{ type, asset, installed }` envelope. Copy only the requested pack
+file and keep it server-side.
+
+If another database installs the exact same build into this directory, the
+starter keeps the first file and its original receipt timestamp. Each database
+records its own installation timestamp.
+
 1. Load the server-owned pack build and the matching
    `CatalogDefinitionInstallReceipt` returned by `installCatalogDefinitions`.
    For a build with a portable rules artifact, bind the retained artifact with
@@ -430,13 +462,19 @@ function readFinish(page: PublishedCatalogOfferPage, skuCode: string) {
 ```
 
 On the first page, the raw reader's `catalog_offer_memberships_page_input_invalid`
-refusal can carry `issue: "offer_unpublished"`. A caller may treat that typed
-case as an empty published list.
+refusal can carry `issue: "offer_unpublished"`. Verify the requested offer version
+identifier before treating that typed case as an empty published list. A
+misspelled version can return the same issue. Surface other refusals.
 
 Everything authored in `product.presentation` becomes public copy. The
 projection carries it unchanged. The starter chooses the fields it displays
 from that copy. Continue the server read with the returned cursor, even when
 the current page produces no displayable SKUs.
+
+The starter lists published SKUs with one-time selling enabled and a positive
+tax-inclusive one-time price in the market currency. Its home and catalogue
+cards show that amount in either cart mode. The product and cart use the server
+quote for the selected mode. See [custom starter card links](../build/customize-the-starter.md#show-published-products-in-the-starter).
 
 The projected primary identifier includes `internal`. Keep internal values as
 local references and omit them from external global GTIN fields. An external

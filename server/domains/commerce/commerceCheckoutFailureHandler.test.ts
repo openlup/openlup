@@ -7,7 +7,7 @@ import { respondToCheckoutFailure } from "./commerceCheckoutFailureHandler.js";
 import { mapStartRuntimeFailure } from "./commerceCheckoutStartRuntimeFailure.js";
 import { intent, ORDER_ID, quoteSnapshot } from "./commerceCheckoutHandler.testFixtures.js";
 import { ProviderAttemptInFlightError } from "../../shared/preparedProviderAttempt.js";
-import { CheckoutOfferRefusedError } from "./checkoutOfferPolicyPort.js";
+import { CheckoutOfferRefusedError } from "@openlup/platform/commerce/server";
 
 afterEach(() => {
   vi.restoreAllMocks();

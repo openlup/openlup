@@ -5,11 +5,14 @@ across retries. Compose the store, handlers and host entrypoints explicitly.
 
 ## PostgreSQL installation and transactions
 
-Apply the package's [baseline SQL](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/outbox/sql/0001_outbox.sql)
-through your migration chain on a fresh PostgreSQL database. Its
-[manifest](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/outbox/sql/manifest.json)
+Apply the package's [baseline SQL](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/sql/0001_outbox.sql)
+through your migration chain on a fresh PostgreSQL database. Then apply the
+[active-row indexes](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/sql/0002_outbox_active_partial_indexes.sql).
+On an existing installation of the baseline, apply the additive index forward
+through the same chain. The
+[manifest](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/sql/manifest.json)
 binds the bytes to their migration owner. Use
-[a supported PostgreSQL version](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/outbox/README.md#postgresql-installation-and-transactions).
+[a supported PostgreSQL version](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/README.md#postgresql-installation-and-transactions).
 Importing the package applies no SQL. Assess compatibility before installing
 into an existing managed schema; the fresh-install baseline is not an upgrade
 for it. Supply your own role grants, row-level security and provider recovery.
@@ -38,6 +41,21 @@ selected delivery metadata also appears at the top level, with the first
 component taking precedence.
 Composed components receive the row and abort signal, without the transient
 execution context. Each component must protect its own effect across replay.
+
+Use `composeIndependentHandlers` for destinations with separate durable
+receipts. Set a concurrency limit and a whole-group deadline. Each admitted
+handler receives the same row, abort signal and execution context. A completed
+group prefers snooze, then retry, then discard, then processed. Opt in with
+`acknowledgeDiscardedHandlers` when an individual terminal discard counts as a
+completed destination. `projectProcessedDetail` lets the host select safe
+metadata from terminal outcomes. The default acknowledgement contains no
+sibling detail.
+
+The worker aborts the group at its deadline and gives active handlers its
+existing abort grace. The composer stops starting queued handlers on abort.
+If active work ignores cancellation, the worker's backstop records a timeout
+retry. Give each destination a durable receipt that also protects concurrent
+attempts after a timeout.
 
 Use `withPayloadSchema` when an application handler needs payload validation.
 Validation issues return `retry` with reason `outbox_payload_invalid`; handlers
@@ -68,7 +86,7 @@ The default prefix is `COMMERCE_OUTBOX_DISPATCH_`; pass another prefix for your
 host's naming scheme. Missing or blank values use defaults. Other values use
 base-ten `parseInt`; non-finite parses use defaults and parsed values clamp to
 the configured bounds. A backoff cap below the base is raised to the base.
-The [configuration source](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/outbox/src/config.ts)
+The [configuration source](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/src/config.ts)
 owns the setting suffixes, numeric defaults and bounds. `createOutbox` separately
 checks host-dependent scheduled limits through `validateScheduledConfig`.
 
@@ -127,7 +145,7 @@ without catalog bodies. Extra row columns are ignored. Parsed property and
 nested array order remain intact; inputs are not mutated.
 
 Shapes retain catalog nulls and PostgreSQL's parsed JSON ordering. Use the
-[grouped-probe source contract](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/README.md#channel-and-stability)
+[grouped-probe source contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#core-grouped-postgresql-schema-probe)
 for exact shape fields and aggregate ordering. The host owns its driver, connection role, snapshot,
 independently observed database and migration identity, digest policy and
 invalidation. Catalog shapes establish neither SQL behavior nor effective
@@ -158,7 +176,7 @@ Compaction clears eligible terminal payloads and errors while retaining rows
 and unique enqueue keys. It stamps `retentionCompactedAt`, `retentionCompactedBy`
 and `retentionCompactedStatus`. Pending, failed and processing work stays intact;
 a discarded row without a valid discard timestamp is ineligible. The
-[compaction source](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/outbox/src/postgres.ts)
+[compaction source](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/outbox/src/postgres.ts)
 owns retention defaults and batch limits.
 Keep `metadata.retainPayload=true` while an unresolved downstream obligation
 needs the original payload; clear it only after durable handoff or resolution.

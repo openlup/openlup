@@ -22,6 +22,8 @@ export interface ContinuationRecord {
  *
  * It is synchronous, matching the synchronous browser storage it is bound to
  * and the functions that read it. An asynchronous variant would be a new name.
+ * A read does not filter by identity format: the identifier binding's
+ * `accepts` is applied only when an identity would be reused.
  */
 export interface ContinuationRecordStorageBinding {
   read(): ContinuationRecord | null;
@@ -36,7 +38,9 @@ export interface ContinuationRecordStorageBinding {
  * be reused. Both use a plain `string`: the identifier format belongs to the
  * host, and the package brands a value with `toContinuationId` only once the
  * host accepts it. A host that wants the server's format applies the commerce
- * entry's `checkoutContinuationJourneyIdSchema` in `accepts`.
+ * entry's `checkoutContinuationJourneyIdSchema` in `accepts`. `accepts` is
+ * applied only when a stored identity would be reused; reading or advancing a
+ * stored record does not filter it by identity format.
  */
 export interface IdentifierBinding {
   next(): string;
@@ -68,7 +72,8 @@ export type SubmitFailureClassifier = (error: unknown) => SubmitFailureClass;
  * `commandKey` returns the request's `CommandKey`, or `null` or `undefined`
  * when the request carries none; a request without a key is never replayed.
  * `replay` sends the retained request and options again. `deadlineMs` is a
- * duration in milliseconds after which the replay gives up.
+ * duration in milliseconds that the package passes to the transport; the
+ * package does not enforce it, and enforcing it is the transport's job.
  */
 export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, TResponse = unknown> {
   commandKey(request: TRequest): CommandKey | null | undefined;
@@ -85,6 +90,13 @@ export interface SubmitTransportBinding<TRequest = unknown, TOptions = unknown, 
  * The union is open: members may be added in a minor release. The package reads
  * a member it does not know as `refuse`.
  *
+ * `getOrCreateContinuationId` reads it from its per-call `storageFailure`:
+ * absent, `refuse` or an unknown member, it returns `null` (nothing may be
+ * sent) when a new identity does not read back with the identity and
+ * fingerprint it wrote. `createPurchaseContinuation` takes no policy: it calls
+ * that function with `refuse`, and refuses to send when a write throws or the
+ * record read back names no identity or another one.
+ *
  * @experimental
  */
 export type StorageFailurePolicy = "refuse" | "continue_unpersisted";
@@ -92,12 +104,18 @@ export type StorageFailurePolicy = "refuse" | "continue_unpersisted";
 /**
  * Receives a client event the package reports.
  *
+ * - `submit_refused_in_flight`: the server refused a submit because an attempt
+ *   for this purchase is already in flight.
+ * - `stored_continuation_rejected`: `createPurchaseContinuation` found a stored
+ *   continuation identity that the identifier binding will not reuse, and sent
+ *   nothing. The event carries no identity.
+ *
  * New events may be added in a minor release, so a host accepts the parameter's
  * union type rather than narrowing to the literals it knows.
  *
  * @experimental
  */
-export type ClientEventReporter = (event: "submit_refused_in_flight") => void;
+export type ClientEventReporter = (event: "submit_refused_in_flight" | "stored_continuation_rejected") => void;
 
 /**
  * Marks a provider action that was already issued for a purchase.
@@ -146,8 +164,8 @@ export interface PendingActionStorageBinding<C extends PendingAction = PendingAc
  *
  * The union and the `action.kind` union are open: members may be added in a
  * minor release. The package reads a reading kind it does not know as
- * `checking`, and an action kind it does not know as `other`, which it does
- * not act on.
+ * `checking`, and an action kind it does not know as `other`, never reopened
+ * or followed, while a provider it names still counts as the open rail.
  *
  * @experimental
  */
@@ -181,9 +199,10 @@ export interface StatusTransportBinding<C extends PendingAction = PendingAction>
  *
  * `providers` lists the providers, `reopenableEmbeddedProviders` those whose
  * embedded action can be opened again, and `retryableAttemptStatuses` the
- * attempt statuses that admit a new attempt. The default for the last is the
- * core payment entry's `RETRYABLE_ATTEMPT_STATUSES`; the statuses are core's
- * `PaymentAttemptStatus`, so this entry adds no second vocabulary.
+ * attempt statuses that admit a new attempt. The reference value of the last
+ * is the core payment entry's `RETRYABLE_ATTEMPT_STATUSES`, which the host
+ * passes in; this entry imports no runtime value from core. The statuses are
+ * core's `PaymentAttemptStatus`, so this entry adds no second vocabulary.
  *
  * @experimental
  */
@@ -196,7 +215,9 @@ export interface PaymentProviderFacts {
 /**
  * What the server does with a changed payload sent under the same command key:
  * `update_in_place` updates the existing record, `refuse_changed` refuses it.
- * It configures no replay. The union is open: members may be added in a minor
+ * It configures no replay. `createPurchaseContinuation` reads it: under
+ * `refuse_changed` it sends a changed payload only after a `refused` answer,
+ * when nothing was created. The union is open: members may be added in a minor
  * release. The package reads a member it does not know as `refuse_changed`: it
  * never assumes that the server applied a changed payload.
  *
@@ -205,17 +226,43 @@ export interface PaymentProviderFacts {
 export type ChangedPayloadPolicy = "update_in_place" | "refuse_changed";
 
 /**
- * The class of the result of any submit command, not only a purchase.
+ * The class of the result of any submit command, not only a purchase. Each
+ * member states what the server said and what a reader may conclude:
+ *
+ * - `settled`: the purchase is paid; treat it as paid.
+ * - `needs_client_action`: a purchase exists and the buyer must act, for
+ *   example pay, confirm or follow an action; show the action.
+ * - `awaiting_authority`: a purchase exists and only a later status read can
+ *   say how it ends; wait and read again.
+ * - `declined`: a definitive decline of the payment attempt, and the purchase
+ *   stays payable; let the buyer try again under a new attempt.
+ * - `refused`: the command was refused before anything was created, with the
+ *   server's own code; show the code and let the buyer correct the input.
+ * - `closed`: the server stated that the purchase under this key is terminal
+ *   and that no payment under it can still settle; stop using the key, so a
+ *   new purchase needs a new key.
+ * - `unknown`: anything else, including an answer the classifier does not
+ *   recognize; neither settle, decline nor close.
+ *
+ * `closed` is never the class of a purchase that is not payable but may still
+ * settle a payment, for example an unpaid order past its link lifetime that
+ * has a payment attempt: that answer is `awaiting_authority` or `unknown`.
+ * Only `declined` advances an attempt and only `closed` retires a key, so an
+ * older classifier that never returns either fails safe.
  *
  * The union is open: members may be added in a minor release. The package reads
  * this value and treats a member it does not know as `unknown`.
  *
  * @experimental
  */
-export type SubmitOutcomeClass = "settled" | "needs_client_action" | "awaiting_authority" | "refused" | "unknown";
+export type SubmitOutcomeClass =
+  "settled" | "needs_client_action" | "awaiting_authority" | "declined" | "refused" | "closed" | "unknown";
 
 /**
  * Maps a submit command's result to one `SubmitOutcomeClass`.
+ *
+ * Return `unknown` for anything not recognized. Read only the fields the class
+ * needs, so a field the server adds later does not change the class.
  *
  * @experimental
  */

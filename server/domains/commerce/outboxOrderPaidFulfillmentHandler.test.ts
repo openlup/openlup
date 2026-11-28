@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COMMERCE_ORDER_PAID_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
 import type { OutboxEventRow } from "./outboxDispatchContracts.js";
-import { createOutboxOrderPaidFulfillmentHandler } from "./outboxOrderPaidFulfillmentHandler.js";
+import { createOutboxOrderPaidFulfillmentHandler } from "@openlup/platform/commerce/server";
 import type {
   OrderPaidFulfillmentPort,
   OrderPaidFulfillmentResult,

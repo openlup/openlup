@@ -14,7 +14,7 @@ import { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePa
 import { assertGuidePage, assertPackageMarkdown, guideAllowListPath, pinGuideReleaseLinks, readGuideAllowList, type GuidePageFix } from "../../packages/core/scripts/documentation-guide-content.ts";
 // eslint-disable-next-line no-restricted-imports -- match the Core contract's npm pack inventory without loading its compiler
 import { packDryRun } from "../../packages/core/scripts/release-npm-checks.ts";
-import { isChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
+import { isChangelogFragment, parseChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
 export { assertReleaseNotePackagedContent, documentedAdapters, findReleaseNotePackagedContentViolations };
 
@@ -60,9 +60,14 @@ export function previousCoreTag(root: string): string | undefined {
   return documentationGit(root, ["describe", "--tags", "--abbrev=0", "--match", "openlup-core-v*", "HEAD"]).toString("utf8").trim();
 }
 
-function releaseChanges(root: string, since: string): ReleaseChange[] {
-  const base = documentationGit(root, ["rev-parse", "--verify", "--end-of-options", `${since}^{commit}`]).toString("utf8").trim();
-  return parseReleaseChanges(documentationGit(root, ["diff", "--name-status", "-z", "--find-renames", "--no-ext-diff", "--no-textconv", base, "HEAD", "--"]).toString("utf8"));
+function resolveCommitRef(root: string, ref: string): string {
+  return documentationGit(root, ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`]).toString("utf8").trim();
+}
+
+function releaseChanges(root: string, since: string, targetRef = "HEAD"): ReleaseChange[] {
+  const base = resolveCommitRef(root, since);
+  const head = resolveCommitRef(root, targetRef);
+  return parseReleaseChanges(documentationGit(root, ["diff", "--name-status", "-z", "--find-renames", "--no-ext-diff", "--no-textconv", base, head, "--"]).toString("utf8"));
 }
 
 const changedPaths = (change: ReleaseChange): string[] => change.previousPath ? [change.previousPath, change.path] : [change.path];
@@ -139,19 +144,113 @@ export function listReleaseDocumentation({ root, since = previousCoreTag(root), 
   return { since: since ?? null, changes: listed, websiteReferences, websiteChecked, warnings: [...new Set(warnings)] };
 }
 
-type Declaration = { first: string; text: string };
+type Declaration = {
+  first: string;
+  text: string;
+  symbol?: string;
+  exported: boolean;
+  deprecated: boolean;
+};
+
+export type SemanticApiDiff = {
+  added: string[];
+  removed: string[];
+  changed: string[];
+  symbolsAdded: string[];
+  symbolsRemoved: string[];
+  symbolsDeprecated: string[];
+};
+
+export type ApiSurfaceSummary = {
+  subpathsAdded: string[];
+  subpathsRemoved: string[];
+  symbolsAdded: string[];
+  symbolsRemoved: string[];
+  symbolsDeprecated: string[];
+};
+
+export type SettingsDelta = {
+  added: string[];
+  removed: string[];
+  changed: string[];
+};
+
+export const STARTER_SECTION_HEADING = "### Starter application (examples/neutral-store)";
+export const UPGRADE_STARTER_SECTION_HEADING = "## Starter application (examples/neutral-store)";
+const ADDED_SYMBOLS_INLINE_LIMIT = 10;
+
+function hasDeprecatedTag(leading: readonly string[]): boolean {
+  const commentText = leading.join("\n");
+  const jsdocBlocks = [...commentText.matchAll(/\/\*\*(?!\/)[\s\S]*?\*\//gu)];
+  const last = jsdocBlocks.at(-1)?.[0];
+  if (!last) return false;
+  const inner = last.slice(3, -2);
+  return /(?:^|[\r\n][ \t]*(?:\*[ \t]*)?|[ \t])@deprecated(?=$|[^A-Za-z0-9_$-])/u.test(inner);
+}
+
+/** Extract the exported symbol identifier from a single declaration or per-specifier export line. */
+export function extractDeclarationSymbolName(line: string): string | undefined {
+  const trimmed = line.replace(/^(?:[\t\n\r ]+|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*)*/u, "").trim();
+  const exportList = /^export\s+(?:type\s+)?\{\s*(?:type\s+)?([A-Za-z_$][A-Za-z0-9_$]*)(?:\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*))?\s*\}/u.exec(trimmed);
+  if (exportList) return exportList[2] ?? exportList[1];
+  const exportNs = /^export\s+(?:type\s+)?\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/u.exec(trimmed);
+  if (exportNs) return exportNs[1];
+  const decl = /^export\s+(?:declare\s+)?(?:default\s+)?(?:abstract\s+|async\s+)?(?:const\s+(?=enum\s))?(?:const|let|var|function|class|interface|type|enum|namespace|module)\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/u.exec(trimmed);
+  return decl?.[1];
+}
+
+function expandExportListBlock(codeLines: readonly string[], blockLeading: readonly string[], deprecated: boolean): Array<{ key: string; entry: Declaration }> | null {
+  const joined = codeLines.map((line) => line.trim()).filter(Boolean).join("\n");
+  const list = /^export\s+(type\s+)?\{([^{}]*)\}(?:\s*from\s*("[^"]*"|'[^']*'))?\s*;?/u.exec(joined);
+  if (!list) return null;
+  if (joined.slice(list[0].length).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu, "").trim() !== "") return null;
+  const isTypeExport = Boolean(list[1]);
+  const rawBody = list[2]!.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu, "");
+  const specifiers = rawBody.split(",").map((spec) => spec.replace(/\s+/gu, " ").trim()).filter(Boolean);
+  if (specifiers.length === 0) return null;
+  const fromClause = list[3] ? ` from ${list[3]}` : "";
+  const leadingLines = blockLeading.map((line) => line.trimEnd());
+  return specifiers.map((spec) => {
+    const isTypeSpec = isTypeExport || /^type\s+/u.test(spec);
+    const withoutType = spec.replace(/^type\s+/u, "");
+    const asMatch = /^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/u.exec(withoutType);
+    const symbol = asMatch ? asMatch[2]! : /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(withoutType) ? withoutType : undefined;
+    const normalized = `export ${isTypeExport ? "type " : ""}{ ${spec} }${fromClause};`;
+    const text = leadingLines.length ? [...leadingLines, normalized].join("\n").trimEnd() : normalized;
+    return {
+      key: symbol ? `${isTypeSpec ? "export-type" : "export"} ${symbol}` : normalized,
+      entry: { first: normalized, text, symbol, exported: true, deprecated },
+    };
+  });
+}
 
 /** Compare complete top-level declaration blocks inside one declaration file or unheaded report. */
 function apiDeclarations(source: string) {
   const blocks = new Map<string, Declaration[]>();
-  let fence = false, typescript = false, block: string[] = [], leading: string[] = [], first = "", key = "";
+  let fence = false, typescript = false;
+  let blockLeading: string[] = [], blockCode: string[] = [], leading: string[] = [];
+  let first = "", key = "", symbol: string | undefined, exported = false;
+  const push = (entryKey: string, entry: Declaration) => {
+    const family = blocks.get(entryKey) ?? [];
+    family.push(entry);
+    blocks.set(entryKey, family);
+  };
   const finish = () => {
-    if (!block.length) return;
-    const text = block.map((line) => line.trimEnd()).join("\n").trimEnd();
-    const family = blocks.get(key) ?? [];
-    family.push({ first, text });
-    blocks.set(key, family);
-    block = [];
+    if (!blockCode.length) return;
+    const deprecated = hasDeprecatedTag(blockLeading);
+    if (/^export\s+(?:type\s+)?\{/u.test(first)) {
+      const expanded = expandExportListBlock(blockCode, blockLeading, deprecated);
+      if (expanded) {
+        for (const item of expanded) push(item.key, item.entry);
+        blockLeading = [];
+        blockCode = [];
+        return;
+      }
+    }
+    const text = [...blockLeading, ...blockCode].map((line) => line.trimEnd()).join("\n").trimEnd();
+    push(key, { first, text, symbol, exported, deprecated });
+    blockLeading = [];
+    blockCode = [];
   };
   for (const line of source.split(/\r?\n/u)) {
     if (line.startsWith("```")) {
@@ -160,17 +259,31 @@ function apiDeclarations(source: string) {
       typescript = !fence && /^```ts(?:\s.*)?$/u.test(line);
       fence = !fence;
     } else if (typescript) {
-      const declaration = /^(?:export\s+)?(?:declare\s+)?(?:default\s+)?(?:abstract\s+|async\s+)?(?:const\s+(?=enum\s))?(const|let|var|function|class|interface|type|enum|namespace|module)\b(?:\s+([\w$]+|"[^"]+"|'[^']+'))?/u.exec(line);
-      if (declaration || /^export\s+(?:\*|\{|type\s+\*)/u.test(line)) {
+      const declaration = /^(?:(export)\s+)?(?:declare\s+)?(?:default\s+)?(?:abstract\s+|async\s+)?(?:const\s+(?=enum\s))?(const|let|var|function|class|interface|type|enum|namespace|module)\b(?:\s+([\w$]+|"[^"]+"|'[^']+'))?/u.exec(line);
+      const exportListOrStar = /^export\s+(?:\*|\{|type\s+(?:\*|\{))/u.test(line);
+      if (declaration || exportListOrStar) {
         finish();
         first = line.trimEnd();
-        key = declaration?.[2] ? `${declaration[1]} ${declaration[2]}` : first;
-        block = [...leading, line];
+        exported = Boolean(declaration?.[1]) || exportListOrStar;
+        if (declaration?.[2] && declaration[3]) {
+          const kind = declaration[2];
+          const rawName = declaration[3];
+          // Group `type` and `interface` under one namespace key so converting between them is a change, not a false removal.
+          const normalizedKind = kind === "interface" ? "type" : kind;
+          key = `${normalizedKind} ${rawName}`;
+          symbol = exported && /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(rawName) ? rawName : undefined;
+        } else {
+          const nsMatch = /^export\s+(?:type\s+)?\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/u.exec(first);
+          symbol = nsMatch?.[1];
+          key = symbol ? `export-ns ${symbol}` : first;
+        }
+        blockLeading = leading;
+        blockCode = [line];
         leading = [];
       } else if (/^(?:\/\/|\/\*\*| \*)/u.test(line)) leading.push(line);
       else if (/^import\b/u.test(line)) leading = [];
       else {
-        if (block.length) block.push(...leading, line);
+        if (blockCode.length) blockCode.push(...leading, line);
         leading = [];
       }
     }
@@ -179,31 +292,109 @@ function apiDeclarations(source: string) {
   return blocks;
 }
 
-function unmatchedDeclarations(blocks: Declaration[], opposite: Declaration[]): string[] {
+function unmatchedDeclarationEntries(blocks: Declaration[], opposite: Declaration[]): Declaration[] {
   const remaining = opposite.slice();
   return blocks.filter(({ text }) => {
     const match = remaining.findIndex((entry) => entry.text === text);
     if (match === -1) return true;
     remaining.splice(match, 1);
     return false;
-  }).map(({ text }) => text);
+  });
 }
 
-export function summarizeApiDiff(before: string, after: string) {
+function exportedSymbols(blocks: ReadonlyMap<string, Declaration[]>): Set<string> {
+  const symbols = new Set<string>();
+  for (const family of blocks.values()) {
+    for (const entry of family) {
+      if (entry.exported && entry.symbol) symbols.add(entry.symbol);
+    }
+  }
+  return symbols;
+}
+
+function exportedDeprecatedSymbols(blocks: ReadonlyMap<string, Declaration[]>): Set<string> {
+  const deprecated = new Set<string>();
+  for (const family of blocks.values()) {
+    for (const entry of family) {
+      if (entry.exported && entry.deprecated && entry.symbol) deprecated.add(entry.symbol);
+    }
+  }
+  return deprecated;
+}
+
+export function summarizeSemanticApiDiff(before: string, after: string): SemanticApiDiff {
   const oldBlocks = apiDeclarations(before), newBlocks = apiDeclarations(after);
-  const added: string[] = [], removed: string[] = [], changed: string[] = [];
+  type DiffItem = { display: string; symbol?: string; exported: boolean };
+  const addedItems: DiffItem[] = [], removedItems: DiffItem[] = [], changedItems: DiffItem[] = [];
   for (const [key, current] of newBlocks) {
     const old = oldBlocks.get(key) ?? [];
-    if (!old.length && current.length === 1) added.push(current[0]!.first);
-    else if (old.length === 1 && current.length === 1) {
-      if (old[0]!.text !== current[0]!.text) changed.push(current[0]!.first);
-    } else (old.length ? changed : added).push(...unmatchedDeclarations(current, old));
+    if (!old.length && current.length === 1) {
+      const entry = current[0]!;
+      addedItems.push({ display: entry.first, symbol: entry.symbol, exported: entry.exported });
+    } else if (old.length === 1 && current.length === 1) {
+      if (old[0]!.text !== current[0]!.text) {
+        const entry = current[0]!;
+        changedItems.push({ display: entry.first, symbol: entry.symbol, exported: entry.exported });
+      }
+    } else {
+      const target = old.length ? changedItems : addedItems;
+      for (const entry of unmatchedDeclarationEntries(current, old)) {
+        target.push({ display: entry.text, symbol: entry.symbol, exported: entry.exported });
+      }
+    }
   }
   for (const [key, old] of oldBlocks) {
     const current = newBlocks.get(key) ?? [];
-    if (old.length === 1 && !current.length) removed.push(old[0]!.first);
-    else if (old.length > 1 || current.length > 1) removed.push(...unmatchedDeclarations(old, current));
+    if (old.length === 1 && !current.length) {
+      const entry = old[0]!;
+      removedItems.push({ display: entry.first, symbol: entry.symbol, exported: entry.exported });
+    } else if (old.length > 1 || current.length > 1) {
+      for (const entry of unmatchedDeclarationEntries(old, current)) {
+        removedItems.push({ display: entry.text, symbol: entry.symbol, exported: entry.exported });
+      }
+    }
   }
+  // If an exported symbol moved between a direct declaration and a re-export within the same file, classify it as changed rather than removed + added.
+  const addedBySymbol = new Map<string, number[]>();
+  for (let i = 0; i < addedItems.length; i++) {
+    const item = addedItems[i]!;
+    if (item.exported && item.symbol) addedBySymbol.set(item.symbol, [...(addedBySymbol.get(item.symbol) ?? []), i]);
+  }
+  const removedBySymbol = new Map<string, number[]>();
+  for (let i = 0; i < removedItems.length; i++) {
+    const item = removedItems[i]!;
+    if (item.exported && item.symbol) removedBySymbol.set(item.symbol, [...(removedBySymbol.get(item.symbol) ?? []), i]);
+  }
+  const pairedAdded = new Set<number>(), pairedRemoved = new Set<number>();
+  for (const [sym, remIndices] of removedBySymbol) {
+    const addIndices = addedBySymbol.get(sym);
+    if (remIndices.length === 1 && addIndices?.length === 1) {
+      pairedRemoved.add(remIndices[0]!);
+      pairedAdded.add(addIndices[0]!);
+      changedItems.push(addedItems[addIndices[0]!]!);
+    }
+  }
+  const finalAdded = addedItems.filter((_, index) => !pairedAdded.has(index));
+  const finalRemoved = removedItems.filter((_, index) => !pairedRemoved.has(index));
+  const beforeExported = exportedSymbols(oldBlocks);
+  const afterExported = exportedSymbols(newBlocks);
+  const beforeDeprecated = exportedDeprecatedSymbols(oldBlocks);
+  const afterDeprecated = exportedDeprecatedSymbols(newBlocks);
+  const symbolsDeprecated = [...afterDeprecated].filter((sym) => !beforeDeprecated.has(sym)).sort(bytewise);
+  const symbolsAdded = [...afterExported].filter((sym) => !beforeExported.has(sym)).sort(bytewise);
+  const symbolsRemoved = [...beforeExported].filter((sym) => !afterExported.has(sym)).sort(bytewise);
+  return {
+    added: finalAdded.map((item) => item.display),
+    removed: finalRemoved.map((item) => item.display),
+    changed: changedItems.map((item) => item.display),
+    symbolsAdded,
+    symbolsRemoved,
+    symbolsDeprecated,
+  };
+}
+
+export function summarizeApiDiff(before: string, after: string) {
+  const { added, removed, changed } = summarizeSemanticApiDiff(before, after);
   return { added, removed, changed };
 }
 
@@ -230,9 +421,10 @@ function snapshotSections(source: string) {
 }
 
 function readApiSurface(root: string, ref: string, directory: string) {
+  const commit = resolveCommitRef(root, ref);
   const gates = `${directory}/release-gates.json`;
-  const paths = documentationGit(root, ["ls-tree", "-r", "-z", "--name-only", ref, "--", `${directory}/api`, gates]).toString("utf8").split("\0");
-  const read = (path: string) => documentationGit(root, ["show", `${ref}:${path}`]).toString("utf8");
+  const paths = documentationGit(root, ["ls-tree", "-r", "-z", "--name-only", commit, "--", `${directory}/api`, gates]).toString("utf8").split("\0");
+  const read = (path: string) => documentationGit(root, ["show", "--end-of-options", `${commit}:${path}`]).toString("utf8");
   const files = new Map<string, { body: string; report: string; carriers: Set<string>; conflicting: boolean }>();
   const unheaded = new Map<string, string>();
   for (const report of paths.filter((path) => API_REPORT.test(path)).sort(bytewise)) {
@@ -264,6 +456,150 @@ function readApiSurface(root: string, ref: string, directory: string) {
 const declarationLabels = { added: "Added", removed: "Removed", changed: "Changed" } as const;
 type DeclarationCategory = keyof typeof declarationLabels;
 type ApiRow = { category: DeclarationCategory; file: string; text: string };
+
+const SQL_MIGRATION_PATH = /^(?:db\/platform\/migrations|packages\/outbox\/sql)\/[^/]+\.sql$/u;
+const SETTINGS_CATALOG_PATH = "packages/platform/settings-catalog.json";
+
+function readGitFileAtRef(root: string, ref: string, path: string): string | undefined {
+  try {
+    return documentationGit(root, ["show", "--end-of-options", `${ref}:${path}`]).toString("utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+function stableJsonString(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJsonString).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => bytewise(a, b));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJsonString(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** Added platform and outbox SQL migration files between `since` and `targetRef`. */
+export function collectSqlDelta(root: string, since: string | undefined, targetRef = "HEAD"): string[] {
+  if (!since) return [];
+  const changes = releaseChanges(root, since, targetRef);
+  return changes
+    .filter(({ status, path }) => status === "A" && SQL_MIGRATION_PATH.test(path))
+    .map(({ path }) => path)
+    .sort(bytewise);
+}
+
+/** Added, removed and changed keys in `packages/platform/settings-catalog.json` between `since` and `targetRef`. */
+export function collectSettingsDelta(root: string, since: string | undefined, targetRef = "HEAD"): SettingsDelta {
+  if (!since) return { added: [], removed: [], changed: [] };
+  const base = resolveCommitRef(root, since);
+  const head = resolveCommitRef(root, targetRef);
+  const parseCatalog = (source: string | undefined): Map<string, string> => {
+    if (!source) return new Map();
+    const parsed = JSON.parse(source) as { entries?: Array<{ key?: unknown }> };
+    const map = new Map<string, string>();
+    for (const entry of parsed.entries ?? []) {
+      if (entry && typeof entry.key === "string") map.set(entry.key, stableJsonString(entry));
+    }
+    return map;
+  };
+  const before = parseCatalog(readGitFileAtRef(root, base, SETTINGS_CATALOG_PATH));
+  const after = parseCatalog(readGitFileAtRef(root, head, SETTINGS_CATALOG_PATH));
+  const added = [...after.keys()].filter((key) => !before.has(key)).sort(bytewise);
+  const removed = [...before.keys()].filter((key) => !after.has(key)).sort(bytewise);
+  const changed = [...after.keys()].filter((key) => before.has(key) && before.get(key) !== after.get(key)).sort(bytewise);
+  return { added, removed, changed };
+}
+
+function packageNameForDirectory(root: string, directory: string): string {
+  const manifestPath = join(root, directory, "package.json");
+  if (existsSync(manifestPath)) {
+    try {
+      const name = (JSON.parse(readFileSync(manifestPath, "utf8")) as { name?: unknown }).name;
+      if (typeof name === "string" && name) return name;
+    } catch { /* fall through */ }
+  }
+  return `@openlup/${posix.basename(directory)}`;
+}
+
+function qualifySubpath(packageName: string, subpath: string): string {
+  if (subpath === ".") return packageName;
+  return subpath.startsWith("./") ? `${packageName}/${subpath.slice(2)}` : `${packageName}/${subpath}`;
+}
+
+function collectSurfaceSymbols(surface: ReturnType<typeof readApiSurface>): { exported: Set<string>; deprecated: Set<string> } {
+  const exported = new Set<string>();
+  const deprecated = new Set<string>();
+  const addBlocks = (source: string) => {
+    if (!source) return;
+    for (const family of apiDeclarations(source).values()) {
+      for (const entry of family) {
+        if (!entry.exported || !entry.symbol) continue;
+        exported.add(entry.symbol);
+        if (entry.deprecated) deprecated.add(entry.symbol);
+      }
+    }
+  };
+  for (const { body } of surface.files.values()) addBlocks(body);
+  for (const body of surface.unheaded.values()) addBlocks(body);
+  return { exported, deprecated };
+}
+
+/** Collect semantic API surface summary across all changed packages between `since` and `targetRef`. */
+export function collectApiSurfaceSummary(root: string, since: string | undefined, targetRef = "HEAD"): ApiSurfaceSummary {
+  if (!since) return { subpathsAdded: [], subpathsRemoved: [], symbolsAdded: [], symbolsRemoved: [], symbolsDeprecated: [] };
+  const base = resolveCommitRef(root, since);
+  const head = resolveCommitRef(root, targetRef);
+  const changes = releaseChanges(root, base, head);
+  const paths = changes.flatMap(changedPaths);
+  const directories = [...new Set(paths.filter((path) => API_REPORT.test(path) || GATES.test(path)).map((path) => path.split("/").slice(0, 2).join("/")))].sort(bytewise);
+  const subpathsAdded = new Set<string>();
+  const subpathsRemoved = new Set<string>();
+  const symbolsAdded = new Set<string>();
+  const symbolsRemoved = new Set<string>();
+  const symbolsDeprecated = new Set<string>();
+  for (const directory of directories) {
+    const before = readApiSurface(root, base, directory);
+    const after = readApiSurface(root, head, directory);
+    const pkgName = packageNameForDirectory(root, directory);
+    for (const subpath of after.subpaths.keys()) if (!before.subpaths.has(subpath)) subpathsAdded.add(qualifySubpath(pkgName, subpath));
+    for (const subpath of before.subpaths.keys()) if (!after.subpaths.has(subpath)) subpathsRemoved.add(qualifySubpath(pkgName, subpath));
+    const beforeSurface = collectSurfaceSymbols(before);
+    const afterSurface = collectSurfaceSymbols(after);
+    for (const sym of afterSurface.exported) {
+      if (!beforeSurface.exported.has(sym)) symbolsAdded.add(sym);
+    }
+    for (const sym of beforeSurface.exported) {
+      if (!afterSurface.exported.has(sym)) symbolsRemoved.add(sym);
+    }
+    for (const sym of afterSurface.deprecated) {
+      if (!beforeSurface.deprecated.has(sym)) symbolsDeprecated.add(sym);
+    }
+  }
+  return {
+    subpathsAdded: [...subpathsAdded].sort(bytewise),
+    subpathsRemoved: [...subpathsRemoved].sort(bytewise),
+    symbolsAdded: [...symbolsAdded].sort(bytewise),
+    symbolsRemoved: [...symbolsRemoved].sort(bytewise),
+    symbolsDeprecated: [...symbolsDeprecated].sort(bytewise),
+  };
+}
+
+function formatAddedDeclarationsSummary(categoryRows: readonly ApiRow[]): string {
+  const symbols: string[] = [];
+  const seenSymbols = new Set<string>();
+  for (const { text } of categoryRows) {
+    const name = extractDeclarationSymbolName(text);
+    if (name && !seenSymbols.has(name)) {
+      seenSymbols.add(name);
+      symbols.push(name);
+    }
+  }
+  if (symbols.length === 0) {
+    return `Added declarations: ${categoryRows.length} (see \`meta/release-index.json\`).`;
+  }
+  const listed = symbols.slice(0, ADDED_SYMBOLS_INLINE_LIMIT).map((name) => `\`${name}\``).join(", ");
+  const overflow = symbols.length > ADDED_SYMBOLS_INLINE_LIMIT ? `, and ${symbols.length - ADDED_SYMBOLS_INLINE_LIMIT} more` : "";
+  return `Added declarations (${categoryRows.length}): ${listed}${overflow} (see \`meta/release-index.json\`).`;
+}
 
 function apiSections(root: string, since: string): string[] {
   const changes = releaseChanges(root, since);
@@ -318,7 +654,7 @@ function apiSections(root: string, since: string): string[] {
           excerpts.push(text);
           previousFile = file;
         }
-        if (category === "added" && categoryRows.length) sections.push(`Added declarations: ${categoryRows.length}; see \`${report}\`.`);
+        if (category === "added" && categoryRows.length) sections.push(formatAddedDeclarationsSummary(categoryRows));
         if (excerpts.length) sections.push(`${label} declarations:`, ["```ts nocheck", "// API report diff: not compiled.", ...excerpts, "```"].join("\n"));
       }
     }
@@ -327,8 +663,8 @@ function apiSections(root: string, since: string): string[] {
   return sections;
 }
 
-/** Upper bound (128 KiB) on a simulated or prepared upgrade page: headroom over real releases, catches runaway API diffs early. */
-export const UPGRADE_PAGE_MAX_BYTES = 128 * 1024;
+/** Upper bound (160 KiB) on a simulated or prepared upgrade page: headroom over real releases (1.4.0 measured about 131 KiB), catches runaway API diffs early. */
+export const UPGRADE_PAGE_MAX_BYTES = 160 * 1024;
 export const RELEASE_NOTE_PACKAGED_CONTENT_REMEDY =
   "wrap approved adapter subpaths in inline code (for example `@openlup/platform/<family>/<adapter>`) "
   + "or remove downstream/provider terms from the offending changelog fragment or API declaration";
@@ -338,19 +674,85 @@ function isUpgradeVersion(version: string): boolean {
   return RELEASE_VERSION.test(version) || /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version);
 }
 
+// An inline link authored from changes/ is projected into two published Markdown files.
+export function rebaseCoreGuideLinks(fragment: ChangelogFragment, prefix: string): string {
+  const { body } = parseChangelogFragment(fragment);
+  return fragment.path.startsWith("packages/core/changes/")
+    ? body.replace(/(\]\([ \t]*<?)\.\.\/docs\/guide\//gu, `$1${prefix}`)
+    : body;
+}
+
+/** Insert `[Upgrading to X.Y.Z](vX-Y-Z.md)` into `packages/core/docs/guide/upgrade/README.md` if missing. */
+export function addUpgradeIndexLink(readmeSource: string, version: string): string {
+  const filename = `v${version.replace(/[^A-Za-z0-9]/gu, "-")}.md`;
+  const link = `[Upgrading to ${version}](${filename})`;
+  if (readmeSource.includes(`(${filename})`) || readmeSource.includes(link)) return readmeSource;
+  const existing = /\[Upgrading to [^\]]+\]\(v[0-9A-Za-z-]+\.md\)/u.exec(readmeSource);
+  if (existing) {
+    const lineStart = readmeSource.lastIndexOf("\n", existing.index - 1) + 1;
+    const linePrefix = readmeSource.slice(lineStart, existing.index);
+    if (/^[ \t]*-\s+$/u.test(linePrefix)) {
+      return `${readmeSource.slice(0, lineStart)}${linePrefix}${link}\n${readmeSource.slice(lineStart)}`;
+    }
+    return `${readmeSource.slice(0, existing.index)}${link},\n${readmeSource.slice(existing.index)}`;
+  }
+  const perRelease = /^## Per-release notes[ \t]*\r?\n/mu.exec(readmeSource);
+  if (perRelease) {
+    const afterHeading = perRelease.index + perRelease[0].length;
+    const nextSection = /^## /mu.exec(readmeSource.slice(afterHeading));
+    const insertAt = nextSection ? afterHeading + nextSection.index : readmeSource.length;
+    const prefix = readmeSource.slice(0, insertAt).trimEnd();
+    const suffix = readmeSource.slice(insertAt);
+    return `${prefix}\n\n- ${link}\n${suffix ? `\n${suffix}` : ""}`;
+  }
+  return `${readmeSource.trimEnd()}\n\n## Per-release notes\n\n- ${link}\n`;
+}
+
+function renderDeltaSections(root: string, since: string | undefined): string[] {
+  if (!since) return [];
+  const sections: string[] = [];
+  const sqlAdded = collectSqlDelta(root, since);
+  if (sqlAdded.length > 0) {
+    sections.push("## SQL Delta", [`Added migrations (${sqlAdded.length}):`, ...sqlAdded.map((path) => `- \`${path}\``)].join("\n"));
+  }
+  const settings = collectSettingsDelta(root, since);
+  const settingLines: string[] = [];
+  if (settings.added.length > 0) settingLines.push(`- Added (${settings.added.length}): ${settings.added.map((key) => `\`${key}\``).join(", ")}`);
+  if (settings.changed.length > 0) settingLines.push(`- Changed (${settings.changed.length}): ${settings.changed.map((key) => `\`${key}\``).join(", ")}`);
+  if (settings.removed.length > 0) settingLines.push(`- Removed (${settings.removed.length}): ${settings.removed.map((key) => `\`${key}\``).join(", ")}`);
+  if (settingLines.length > 0) {
+    sections.push("## Settings Delta", settingLines.join("\n"));
+  }
+  return sections;
+}
+
 function renderUpgradePageSections({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }) {
   if (!isUpgradeVersion(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version or prerelease`);
   const guideRoot = join(resolve(root), GUIDE);
   const procedure = existsSync(join(guideRoot, "upgrade/README.md")) ? "; see the [upgrade procedure](README.md)" : "";
   const intro = [`# Upgrading to ${version}`, `This page lists what changed since the previous release${procedure}.`];
   const notesSections: string[] = [];
+  const starterNotes: ChangelogFragment[] = [];
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
   for (const entry of config.packages.filter(({ publish }) => publish)) {
-    const notes = fragments.filter(({ path }) => path.startsWith(`${entry.directory}/changes/`)).sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
-    if (notes.length) notesSections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
+    const allNotes = fragments.filter(({ path }) => path.startsWith(`${entry.directory}/changes/`)).sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
+    const npmNotes: ChangelogFragment[] = [];
+    for (const fragment of allNotes) {
+      const parsed = parseChangelogFragment(fragment);
+      if (parsed.meta.audience === "starter") starterNotes.push(fragment);
+      else npmNotes.push(fragment);
+    }
+    if (npmNotes.length) notesSections.push(`## ${entry.name}`, ...npmNotes.map((fragment) => rebaseCoreGuideLinks(fragment, "../").trimEnd()));
   }
   const api = ["## API changes", ...(since ? apiSections(root, since) : ["The previous release could not be determined: no core release tag is an ancestor of HEAD."])];
-  return { text: `${[...intro, ...notesSections, ...api].join("\n\n")}\n`, generated: `${[...intro, ...api].join("\n\n")}\n` };
+  const deltas = renderDeltaSections(root, since);
+  const starterSection = starterNotes.length
+    ? [UPGRADE_STARTER_SECTION_HEADING, ...starterNotes.map((fragment) => rebaseCoreGuideLinks(fragment, "../").trimEnd())]
+    : [];
+  return {
+    text: `${[...intro, ...notesSections, ...api, ...deltas, ...starterSection].join("\n\n")}\n`,
+    generated: `${[...intro, ...api, ...deltas].join("\n\n")}\n`,
+  };
 }
 
 /** Render the upgrade page Markdown in memory without spawning the TypeScript guide planner. */
@@ -446,10 +848,9 @@ function assertUpgradePageDocumentation(
   const changelog = { packageRoot, file: join(packageRoot, "CHANGELOG.md"), label: "CHANGELOG.md", packed, scripts };
   for (const fragment of fragments) {
     const count = fragmentViolations.length;
-    const source = fragment.contents.trimEnd();
-    if (violations.length) assertGuidePage({ ...context, source: normalize(source), fragmentPath: fragment.path }, fragmentViolations);
+    if (violations.length) assertGuidePage({ ...context, source: normalize(rebaseCoreGuideLinks(fragment, "../").trimEnd()), fragmentPath: fragment.path }, fragmentViolations);
     if (fragment.path.startsWith("packages/core/changes/")) {
-      // Release copies the fragment text verbatim and links resolve from the package root.
+      const source = rebaseCoreGuideLinks(fragment, "docs/guide/").trimEnd();
       assertPackageMarkdown({ ...changelog, source }, false, fragmentViolations, `${fragment.path} (Core CHANGELOG.md)`);
     }
     if (fragmentViolations.length > count) instructions.push(`correct the reported content in ${fragment.path}`);

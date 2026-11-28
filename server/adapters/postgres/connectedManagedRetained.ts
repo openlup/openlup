@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 import { PostgresTransferError, type CompatiblePostgresSnapshot, type TransferObjectInventory } from "@openlup/platform/portability";
-import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingResult, type ManagedIdentityMappingSource } from "./connectedStoreRestore.js";
+import { mapManagedIdentityForConnectedRestore, type ManagedIdentityMappingResult, type ManagedIdentityMappingSource } from "./connectedManagedIdentity.js";
 import { connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+import { digest, listUserRelations, rehashCapturePacket, replaceTargetRows } from "./connectedTransferPacket.js";
 import type { createS3TransferObjectSource, S3SourceReferenceSnapshot, S3TransferObjectCensus } from "../s3/transferObjectSource.js";
 
 type Row = Record<string, unknown>;
@@ -120,7 +120,6 @@ const stateClass = new Set(["public.payment_provider_settlement_batches",
   "public.payment_provider_settlement_items", "public.commerce_idempotency_keys", "public.payment_external_refs",
   "public.commerce_payments", "public.commerce_payment_intents", "public.commerce_payment_attempts",
   "public.commerce_payment_state_transitions"]);
-const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 // Source rows are used for the immediate typed projection only. Neither the
 // capture result nor the connected restore packet contains a source-row archive.
 const projectionRows = new WeakMap<ManagedSourceCapture, Map<string, Row[]>>();
@@ -171,11 +170,7 @@ export async function captureManagedSourceGraph(input: {
       await db.query("SET LOCAL TimeZone = 'UTC'");
       // A login that row security would filter must fail here, not read an empty source.
       await db.query("SET LOCAL row_security = off");
-      const relations = (await db.query<{ schema: string; table: string }>(`SELECT n.nspname AS schema,c.relname AS table
-        FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-        WHERE pg_catalog.left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
-          AND c.relkind IN ('r','p')
-        ORDER BY n.nspname,c.relname`)).rows;
+      const relations = await listUserRelations(db);
       const sourceRows = new Map<string, Row[]>();
       const dispositions: ManagedSourceCapture["dispositions"] = [];
       let totalRows = 0, totalBytes = 0;
@@ -866,7 +861,13 @@ export async function mapManagedRetainedBusiness(input: {
         || delivery.status === "failed" && work.status === "discarded"))
       fail("unsupported_table", "public.communication_email_deliveries");
   }
-  for (const [table, rows] of Object.entries(projected)) await replaceTargetRows(packet, table, rows, input.targetOwner);
+  for (const [table, rows] of Object.entries(projected)) {
+    await replaceTargetRows(packet, table, rows, input.targetOwner, {
+      quoteIdentifier: quoted,
+      columnMismatchCode: "schema_conflict",
+      includeTableOnInputError: true,
+    });
+  }
   const supportedHistory = new Set(["public.admin_audit_events", "public.payment_provider_settlement_batches",
     "public.payment_provider_settlement_items", "public.commerce_idempotency_keys",
     "public.communication_contacts", "public.communication_contact_links", "public.communication_email_deliveries",
@@ -891,35 +892,10 @@ export async function mapManagedRetainedBusiness(input: {
   }
   if (settlementItems.some(item => !settlementBatches.some(batch => batch.id === item.batch_id)))
     fail("target_conflict", "public.payment_provider_settlement_items");
-  const { sha256: _inner, ...inner } = packet.compatible;
-  packet.compatible.sha256 = digest(JSON.stringify(inner));
-  const { sha256: _outer, ...outer } = packet;
-  packet.sha256 = digest(JSON.stringify(outer));
+  rehashCapturePacket(packet);
   if (values("communication_email_deliveries").some(row => row.status !== "failed"))
     fail("unsupported_table", "public.communication_email_deliveries");
   return { packet, identitySubjects: mapped.subjects, storageObjects };
-}
-
-async function replaceTargetRows(packet: ConnectedNativeStoreCapture, table: string, rows: Row[], owner: Pool): Promise<void> {
-  const held = packet.compatible.tables.find(value => value.table === table)
-    ?? packet.owned.find(value => value.table === table);
-  if (!held || held.rows.length) fail("target_conflict", table);
-  const columns = held.columns.map(column => column.name);
-  const normalized: string[] = [];
-  for (const row of rows) {
-    if (Object.keys(row).sort().join("\0") !== [...columns].sort().join("\0")) fail("schema_conflict", table);
-    try {
-      // Restore compares this text at UTC, so a target session in another zone must not format it.
-      const result = await owner.query<{ value: string }>(`SELECT pg_catalog.set_config('TimeZone','UTC',true) AS zone,pg_catalog.to_jsonb(p)::pg_catalog.text AS value
-        FROM pg_catalog.jsonb_populate_record(NULL::public.${quoted(table)},$1::jsonb) p`, [JSON.stringify(row)]);
-      if (result.rows.length !== 1) fail("invalid_input", table);
-      normalized.push(result.rows[0]!.value);
-    } catch (error) {
-      if (typeof (error as { code?: unknown })?.code === "string" && /^2[23]/.test((error as { code: string }).code)) fail("invalid_input", table);
-      throw error;
-    }
-  }
-  held.rows = normalized.sort();
 }
 
 function validateCapture(capture: ManagedSourceCapture): void {

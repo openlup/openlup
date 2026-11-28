@@ -6,8 +6,9 @@ import { env as processEnvironment } from 'node:process';
 import { gzipSync } from 'node:zlib';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
-import { carryOverSourceReview, diagnoseReceipt, enqueueAfterChecks, isMigrationQueueSerializedPath, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, DEFER_HARDENING, deferFinding, digest, ECONOMY_RECEIPT_MARKER, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
+import { carryOverSourceReview, createGitHubReadApi, diagnoseReceipt, enqueueAfterChecks, EXIT_AWAITING_RECEIPT, isMigrationQueueSerializedPath, parseReceipt, probeToolchainNeeded, readReceipts, reportQueueCliError, waitNativeAdmission } from './agent-review-queue.mjs';
+import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, git as sourceGit } from './agent-review-session.mjs';
 import { createLocalQueueReadAdapter, observeQueueAdmission, parseQueueCommand, verifyQueueReview } from './agent-review-queue-planner.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 import { checkQueueArm } from './merge-queue-check-arm.mjs';
@@ -61,10 +62,10 @@ it('imports agent-review-queue.mjs and agent-review-session.mjs in bare Node wit
     }
     const output = execFileSync(
       process.execPath,
-      ['--input-type=module', '-e', "const q = await import('./scripts/agent-review-queue.mjs'); const s = await import('./scripts/agent-review-session.mjs'); console.log(typeof q.enqueueAfterChecks, typeof s.proveReviewIntegration);"],
+      ['--input-type=module', '-e', "const q = await import('./scripts/agent-review-queue.mjs'); const s = await import('./scripts/agent-review-session.mjs'); console.log(typeof q.enqueueAfterChecks, typeof q.probeToolchainNeeded, typeof q.reportQueueCliError, typeof q.createGitHubReadApi, q.EXIT_AWAITING_RECEIPT, typeof s.proveReviewIntegration);"],
       { cwd: isolated, env: { PATH: processEnvironment.PATH ?? '' }, encoding: 'utf8', timeout: 30000 },
     );
-    expect(output.trim()).toBe('function function');
+    expect(output.trim()).toBe('function function function function 78 function');
   } finally {
     rmSync(isolated, { recursive: true, force: true });
   }
@@ -95,8 +96,10 @@ function handoffFixture(candidate = receipt) {
     if (path.startsWith('/graphql?')) return { data: { repository: { pullRequest: structuredClone(f.queuePr) } } };
     if (path.includes('/collaborators/')) return { permission: f.permission };
     if (path.includes('/jobs?')) {
-      const page = Number(new URL(path, 'https://example.invalid').searchParams.get('page'));
-      return { total_count: f.result.total_count, jobs: structuredClone(f.result.jobs.slice((page - 1) * 100, page * 100)) };
+      const params = new URL(path, 'https://example.invalid').searchParams;
+      const page = Number(params.get('page'));
+      const perPage = Number(params.get('per_page') ?? '50');
+      return { total_count: f.result.total_count, jobs: structuredClone(f.result.jobs.slice((page - 1) * perPage, page * perPage)) };
     }
     if (path.includes('/actions/workflows/')) return structuredClone(f.listing);
     if (path.includes('/actions/runs/')) return structuredClone(f.run);
@@ -327,6 +330,162 @@ describe('hosted receipt comments', () => {
     expect(lines.filter(line => line.startsWith('```'))).toEqual(['```text', '```']);
     expect(parseReceipt(rendered)).toEqual(summary);
     await expect(waitFor(rendered)).resolves.toEqual(summary);
+  });
+
+  it('admits valid deferrals and refuses receipts that use the wrong deferral policy for their base', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'openlup-legacy-defer-'));
+    const git = (...args: string[]) => execFileSync('/usr/bin/git', [
+      '--no-replace-objects', '-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+      '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args,
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    const put = (path: string, content: string) => {
+      const target = join(cwd, path);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, content);
+    };
+    const commit = (msg: string) => {
+      git('add', '-A');
+      git('commit', '-qm', msg);
+      return git('rev-parse', 'HEAD');
+    };
+    try {
+      git('init', '-q', '-b', 'main');
+      put('scripts/agent-review-decide.mjs', 'export const REVIEW_RULES_VERSION = 3;\nexport function deferFinding(session) { return session; }\n');
+      put('app.ts', 'export const n = 1;\n');
+      const legacyBase = commit('pre-pr4 base');
+      git('update-ref', 'refs/remotes/origin/main', legacyBase);
+
+      put('app.ts', 'export const n = 2;\n');
+      const legacyHead = commit('pr on pre-pr4 base');
+      const legacyCand = await captureCommittedReviewCandidate(cwd, legacyBase, legacyHead);
+      const legacyRules = await captureReviewRules(cwd, legacyCand);
+      const intent = { risk: 'routine', criteria: 'Preserve legacy defer compatibility' };
+      const preSession = {
+        version: 3,
+        authorSessionId: 'author',
+        intent,
+        candidate: { ...legacyCand, rules: legacyRules },
+        preparedAt: time + 2,
+        history: [
+          { type: 'rules', version: 3, at: time },
+          { type: 'prepare', intent, candidate: { ...legacyCand, rules: legacyRules }, authorSessionId: 'author', at: time },
+          {
+            type: 'report', at: time,
+            report: { reviewer: 'leg-r1', cold: true, tree: legacyCand.tree, verdict: 'FAIL', documentation: 'Checked.', findings: [{ id: 'LEG-1', summary: 'legacy card', material: true }], closes: [], at: time },
+          },
+          { type: 'defer', at: time + 1, findingId: 'LEG-1', target: 'later', decision: 'CM-1', reason: 'pre-pr4 deferral' },
+          {
+            type: 'report', at: time + 2,
+            report: { reviewer: 'leg-r2', cold: true, tree: legacyCand.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], at: time + 2 },
+          },
+        ],
+      };
+      const legacySummary = receiptSummary(preSession, 12, time + 2, { legacyDefer: true });
+      const legacyBody = receiptBody(legacySummary, { legacyDefer: true });
+
+      const confirmedDeferReceipt = (candidate: Parameters<typeof prepareCandidate>[1]) => {
+        const session = prepareCandidate(undefined, candidate, time + 5);
+        const report = { cold: true, tree: session.candidate.tree, documentation: 'Checked.', closes: [] };
+        const failed = recordReport(session, {
+          ...report, reviewer: 'hard-r1', verdict: 'FAIL', findings: [{ id: 'HARD-1', summary: 'hardened card', material: true }],
+        }, time + 6);
+        const deferred = deferFinding(failed, { findingId: 'HARD-1', target: 'issue-2', decision: 'CM-2', reason: 'confirmed deferral' }, time + 7);
+        const confirmed = recordReport(deferred, {
+          ...report, reviewer: 'hard-r2', verdict: 'PASS', findings: [], acceptsDefer: ['HARD-1'],
+        }, time + 8);
+        return receiptSummary(confirmed, 12, time + 8);
+      };
+      const env = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' };
+      const pullRequestEvent = (head: string) => ({ number: 12, repository: { private: false }, pull_request: { head: { sha: head } } });
+      const receiptApi = (mainSha: string, prHead: string, receiptCommentBody: string) => {
+        const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: prHead } };
+        return {
+          get: vi.fn(async (path: string) => path.includes('/pulls/') ? pr
+            : path.includes('/issues/') ? [comment({ body: receiptCommentBody })]
+            : path.includes('/collaborators/') ? { permission: 'write' }
+            : { object: { sha: mainSha } }),
+        };
+      };
+      const admitReal = async (mainSha: string, prHead: string, receiptCommentBody: string) => {
+        const api = receiptApi(mainSha, prHead, receiptCommentBody);
+        const runGit = (dir: string, ...args: string[]) => args.includes('fetch') ? Promise.resolve('') : sourceGit(dir, ...args);
+        let clock = time + 10;
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        try {
+          return await waitNativeAdmission({
+            cwd, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1,
+            event: pullRequestEvent(prHead), env,
+          });
+        } finally { log.mockRestore(); }
+      };
+
+      // Case 1: Pre-PR-4 base + pre-PR-4 defer receipt admits cleanly.
+      await expect(admitReal(legacyBase, legacyHead, legacyBody)).resolves.toEqual(legacySummary);
+
+      const forgedLegacy = confirmedDeferReceipt({ ...legacyCand, rules: legacyRules, intent, authorSessionId: 'author' });
+      const forgedLegacyBody = receiptBody(forgedLegacy);
+      const forgedLegacyApi = receiptApi(legacyBase, legacyHead, forgedLegacyBody);
+      await expect(readReceipts(forgedLegacyApi, '/repos/openlup/openlup', 12, legacyHead, time + 10)).resolves.toEqual([forgedLegacy]);
+      await expect(probeToolchainNeeded({
+        event: pullRequestEvent(legacyHead), env, api: forgedLegacyApi, now: () => time + 10,
+      })).resolves.toBe(true);
+      await expect(admitReal(legacyBase, legacyHead, forgedLegacyBody)).rejects.toThrow('invalid historical acceptsDefer');
+
+      // Advance main with PR-4 DEFER_HARDENING.
+      git('checkout', '-q', '--detach', legacyBase);
+      put('scripts/agent-review-decide.mjs', `export const REVIEW_RULES_VERSION = 3;\nexport const DEFER_HARDENING = '${DEFER_HARDENING}';\nexport function deferFinding(session) { return session; }\n`);
+      put('main-note.txt', 'post-pr4 main\n');
+      const hardenedBase = commit('post-pr4 base');
+      git('update-ref', 'refs/remotes/origin/main', hardenedBase);
+
+      // Case 2: Integrated PR carrying forward a pre-PR-4 deferred session onto post-PR-4 main also admits cleanly.
+      git('checkout', '-q', '--detach', legacyHead);
+      git('merge', '--no-ff', '-qm', 'merge post-pr4 main', hardenedBase);
+      const integratedHead = git('rev-parse', 'HEAD');
+      const integratedCand = await captureCommittedReviewCandidate(cwd, hardenedBase, integratedHead);
+      const integratedObserved = { ...integratedCand, rules: await captureReviewRules(cwd, integratedCand), intent, authorSessionId: 'author' };
+      const deferBases = { legacyDeferBases: new Set([legacyBase]) };
+      const integration = integrationReviewContext(preSession, integratedObserved, { parents: [legacyHead, hardenedBase], baseAncestor: true, mechanical: true }, time + 3, deferBases);
+      const coverage = await captureCoverageEdge(cwd, preSession, integratedObserved, time + 3);
+      const integratedSession = prepareCandidate(preSession, { ...integratedObserved, integration, coverage }, time + 3, false, deferBases);
+      const integratedSummary = receiptSummary(integratedSession, 12, time + 3, deferBases);
+      const integratedBody = receiptBody(integratedSummary, deferBases);
+      await expect(admitReal(hardenedBase, integratedHead, integratedBody)).resolves.toEqual(integratedSummary);
+
+      const hardened = confirmedDeferReceipt(integratedObserved);
+      const hardenedBody = receiptBody(hardened);
+      await expect(readReceipts(receiptApi(hardenedBase, integratedHead, hardenedBody), '/repos/openlup/openlup', 12, integratedHead, time + 10)).resolves.toEqual([hardened]);
+      await expect(admitReal(hardenedBase, integratedHead, hardenedBody)).resolves.toEqual(hardened);
+
+      // Case 3: A fresh unhardened defer created AFTER PR-4 DEFER_HARDENING landed is strictly refused.
+      git('checkout', '-q', '--detach', hardenedBase);
+      put('app.ts', 'export const n = 3;\n');
+      const forgedHead = commit('pr on post-pr4 base');
+      const forgedCand = await captureCommittedReviewCandidate(cwd, hardenedBase, forgedHead);
+      const forgedRules = await captureReviewRules(cwd, forgedCand);
+      const forgedSession = {
+        version: 3,
+        authorSessionId: 'author',
+        intent,
+        candidate: { ...forgedCand, rules: forgedRules },
+        preparedAt: time + 5,
+        history: [
+          { type: 'prepare', intent, candidate: { ...forgedCand, rules: forgedRules }, authorSessionId: 'author', at: time + 4 },
+          {
+            type: 'report', at: time + 4,
+            report: { reviewer: 'forged-r1', cold: true, tree: forgedCand.tree, verdict: 'FAIL', documentation: 'Checked.', findings: [{ id: 'FRG-1', summary: 'post-pr4 card', material: true }], closes: [], at: time + 4 },
+          },
+          { type: 'defer', at: time + 5, findingId: 'FRG-1', target: 'later', decision: 'CM-2', reason: 'bypass attempt' },
+          {
+            type: 'report', at: time + 5,
+            report: { reviewer: 'forged-r2', cold: true, tree: forgedCand.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], at: time + 5 },
+          },
+        ],
+      };
+      const forgedSummary = receiptSummary(forgedSession, 12, time + 5, { legacyDefer: true });
+      const forgedRawBody = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(forgedSummary)}\n\`\`\``;
+      await expect(admitReal(hardenedBase, forgedHead, forgedRawBody)).rejects.toThrow('receipt wait expired');
+    } finally { rmSync(cwd, { recursive: true, force: true }); }
   });
 });
 
@@ -563,7 +722,7 @@ describe('CI completion queue handoff', () => {
     f.result.jobs.push({ ...native, id: 88, run_attempt: 2 }); f.result.total_count++;
     native.conclusion = 'failure';
     await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
-    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=100&page=1');
+    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=50&page=1');
     expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
   });
   it.each(['failure', 'skipped', 'pending', 'ambiguous latest'])('never recovers an earlier success over a later %s required job', async outcome => {
@@ -576,17 +735,17 @@ describe('CI completion queue handoff', () => {
   });
   it.each(['complete', 'count changed', 'duplicate across pages', 'missing page'])('requires complete same-run job history pagination: %s', async scenario => {
     const f = handoffFixture();
-    const filler = Array.from({ length: 100 }, (_, index) => ({ ...f.result.jobs[0]!, id: 100 + index, name: `diagnostic ${index}` }));
+    const filler = Array.from({ length: 50 }, (_, index) => ({ ...f.result.jobs[0]!, id: 100 + index, name: `diagnostic ${index}` }));
     f.result.jobs.push(...filler); f.result.total_count += filler.length;
-    if (scenario === 'duplicate across pages') f.result.jobs[100]!.id = f.result.jobs[0]!.id;
+    if (scenario === 'duplicate across pages') f.result.jobs[50]!.id = f.result.jobs[0]!.id;
     f.state.getHook = path => {
       if (!path.endsWith('page=2')) return;
       if (scenario === 'count changed') f.result.total_count++;
-      if (scenario === 'missing page') f.result.jobs.splice(100);
+      if (scenario === 'missing page') f.result.jobs.splice(50);
     };
     if (scenario === 'complete') await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
     else { await expect(f.execute()).rejects.toThrow(); expect(f.enqueue).not.toHaveBeenCalled(); }
-    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=100&page=2');
+    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=50&page=2');
   });
   it.each(['before', 'equal', 'after'])('bounds queue attempts to the current merge intent: prior event %s arming', async boundary => {
     const f = handoffFixture();
@@ -994,6 +1153,7 @@ describe('migration merge-queue serialization', () => {
       head: receipt.head,
       blockingPrs: [77],
       reason: 'another migration PR is already active in the merge queue',
+      remediation: expect.stringMatching(/#77[\s\S]*npm run landing:merge -- --re-slot/u),
     });
     expect(f.enqueue).not.toHaveBeenCalled();
   });
@@ -1066,6 +1226,7 @@ describe('migration merge-queue serialization', () => {
       head: receipt.head,
       blockingPrs: [77],
       reason: 'another migration PR is already active in the merge queue',
+      remediation: expect.stringMatching(/#77[\s\S]*npm run landing:merge -- --re-slot/u),
     });
     expect(f.enqueue).not.toHaveBeenCalled();
   });
@@ -1482,6 +1643,23 @@ describe('manual queue arm preflight', () => {
     expect(read.mock.calls.some(([args]) => args.some(path => path.includes('/actions/')))).toBe(false);
   });
 
+  it('skips a conflict removal without a group commit but keeps every other removal check', async () => {
+    const { check, f, read, removal } = armFixture();
+    const conflict = { ...removal, id: 'R_C', reason: 'MERGE_CONFLICT', beforeCommit: null };
+    f.removals = [conflict, { ...conflict, id: 'R_C2', reason: 'merge_conflict' }];
+    await expect(check()).resolves.toMatchObject({ status: 'ready', reason: 'preflight_passed' });
+    expect(read.mock.calls.some(([args]) => args.some(path => path.includes('/commits/')))).toBe(false);
+    f.removals = [{ ...conflict, reason: 'failed_checks' }];
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown',
+      detail: expect.stringContaining('queue removal lacks a synthetic commit or reason') });
+    f.removals = [{ ...removal, reason: 'merge_conflict' }];
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'operator_diagnosis',
+      removal: 'merge_conflict', group: removal.beforeCommit.oid });
+    f.groupVerified = false;
+    await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown',
+      detail: expect.stringContaining('queue removal cannot be linked to an exact source head') });
+  });
+
   it('distinguishes a prior exact source head from the current head', async () => {
     const { check, f, olderHead, removal } = armFixture();
     f.groupParent = olderHead;
@@ -1539,4 +1717,156 @@ it('holds when main moves during an otherwise unchanged arm preflight', async ()
   const { check, f } = armFixture();
   f.onLive = reads => { if (reads === 2) f.main = 'e'.repeat(40); };
   await expect(check()).resolves.toMatchObject({ status: 'held', reason: 'evidence_unknown' });
+});
+
+describe('queue hygiene helpers (toolchain probe, CLI error reporting, 5xx retry, comment pagination)', () => {
+  it('paginates PR receipt comments with per_page=50', async () => {
+    const page1 = Array.from({ length: 50 }, (_, index) => ({ id: index + 1, body: 'ordinary comment', user: { login: 'u', type: 'User' }, created_at: '2026-10-19T00:00:00Z' }));
+    const page2 = [comment({ id: 51 })];
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path === '/repos/openlup/openlup/issues/12/comments?per_page=50&page=1') return page1;
+        if (path === '/repos/openlup/openlup/issues/12/comments?per_page=50&page=2') return page2;
+        if (path.includes('/collaborators/')) return { permission: 'write' };
+        throw new Error(`unexpected read ${path}`);
+      }),
+    };
+    const receipts = await readReceipts(api, '/repos/openlup/openlup', 12, receipt.head, time);
+    expect(receipts).toEqual([receipt]);
+    expect(api.get).toHaveBeenCalledWith('/repos/openlup/openlup/issues/12/comments?per_page=50&page=1');
+    expect(api.get).toHaveBeenCalledWith('/repos/openlup/openlup/issues/12/comments?per_page=50&page=2');
+  });
+
+  it('retries transient HTTP 5xx reads with exponential backoff and never retries 4xx', async () => {
+    const sleeps: number[] = [];
+    let calls = 0;
+    const exec = vi.fn(async () => {
+      calls += 1;
+      if (calls < 3) throw Object.assign(new Error('gh failed'), { stderr: 'gh: Service Unavailable (HTTP 503)' });
+      return { stdout: '{"ok":true}' };
+    });
+    const api = createGitHubReadApi({ exec, sleep: async ms => { sleeps.push(ms); }, maxAttempts: 3, baseDelayMs: 250 });
+    await expect(api.get('/repos/openlup/openlup/pulls/12')).resolves.toEqual({ ok: true });
+    expect(calls).toBe(3);
+    expect(sleeps).toEqual([250, 500]);
+
+    const sleeps4xx: number[] = [];
+    const exec4xx = vi.fn(async () => {
+      throw Object.assign(new Error('gh failed'), { stderr: 'gh: Not Found (HTTP 404)' });
+    });
+    const api4xx = createGitHubReadApi({ exec: exec4xx, sleep: async ms => { sleeps4xx.push(ms); }, maxAttempts: 3, baseDelayMs: 250 });
+    await expect(api4xx.get('/repos/openlup/openlup/pulls/999')).rejects.toThrow('gh failed');
+    expect(exec4xx).toHaveBeenCalledTimes(1);
+    expect(sleeps4xx).toEqual([]);
+  });
+
+  it('probes whether native-review needs npm ci and writes GITHUB_OUTPUT', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'openlup-probe-toolchain-'));
+    try {
+      const outputPath = join(dir, 'github-output.txt');
+      const v3Receipt = (proof?: { kind: string; derived?: boolean }) => {
+        const rules = { version: 3, base: digest([]), head: digest([]) };
+        const base1 = '1'.repeat(40);
+        const head1 = '2'.repeat(40);
+        const tree1 = '3'.repeat(40);
+        const intent = { risk: 'routine', criteria: 'Probe test' };
+        const firstCandidate = {
+          base: proof ? base1 : receipt.base,
+          head: proof ? head1 : receipt.head,
+          tree: proof ? tree1 : receipt.tree,
+          changedPaths: observed.changedPaths,
+          modeChanged: false,
+          clean: true,
+          rules,
+        };
+        const prepared = prepareCandidate(null, { ...firstCandidate, authorSessionId: 'author', intent }, time);
+        const completed = recordReport(prepared, { cold: true, tree: firstCandidate.tree, verdict: 'PASS', documentation: 'Checked.', findings: [], closes: [], reviewer: 'reviewer-1' }, time);
+        if (!proof) return receiptBody(receiptSummary(completed, receipt.pr, time));
+        const integrated = prepareCandidate(completed, {
+          base: receipt.base,
+          head: receipt.head,
+          tree: receipt.tree,
+          changedPaths: observed.changedPaths,
+          modeChanged: false,
+          clean: true,
+          rules,
+          authorSessionId: 'author',
+          intent,
+          integration: { base: base1, head: head1, tree: tree1, expires: time + 86400000, mechanical: false },
+          coverage: {
+            kind: 'integration',
+            previous: digest(completed.history),
+            from: { base: base1, head: head1, tree: tree1 },
+            proof: { ...proof, tree: receipt.tree },
+          },
+        }, time);
+        return receiptBody(receiptSummary(integrated, receipt.pr, time));
+      };
+      const makeApi = (comments: unknown[], { fail = false, failPermission = false, permission = 'write' } = {}) => ({
+        get: vi.fn(async (path: string) => {
+          if (fail) throw new Error('network error');
+          if (path.includes('/pulls/')) return { number: 12, head: { sha: receipt.head } };
+          if (path.includes('/issues/')) return comments;
+          if (path.includes('/collaborators/')) {
+            if (failPermission) throw new Error('permission lookup HTTP 503');
+            return { permission };
+          }
+          throw new Error(`unexpected ${path}`);
+        }),
+      });
+      const prEvent = { number: 12, repository: { private: false } };
+      const prEnv = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: outputPath };
+      const prEnvNoOut = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' };
+      const mgEvent = { repository: { private: false }, merge_group: { head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${receipt.head}` } };
+      const mgEnv = { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'merge_group' };
+
+      // Truly unreceipted pull_request fast-fails without polling -> false
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnv, api: makeApi([]), now: () => time })).resolves.toBe(false);
+      // Clean non-derived v3 receipt -> false
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt() })]), now: () => time })).resolves.toBe(false);
+      // Derived flag or derived/portable-derived proof kinds -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnv, api: makeApi([comment({ body: v3Receipt({ kind: 'resolution', derived: true }) })]), now: () => time })).resolves.toBe(true);
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt({ kind: 'derived' }) })]), now: () => time })).resolves.toBe(true);
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt({ kind: 'portable-derived' }) })]), now: () => time })).resolves.toBe(true);
+      // merge_group with no receipts polls -> true
+      await expect(probeToolchainNeeded({ event: mgEvent, env: mgEnv, api: makeApi([]), now: () => time })).resolves.toBe(true);
+      // invalidComments (malformed receipt marker) polls -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: `${ECONOMY_RECEIPT_MARKER}\nnot-a-fence` })]), now: () => time })).resolves.toBe(true);
+      // currentHeadComments without an admitted receipt (FAIL verdict or non-write author) polls -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: body({ ...receipt, verdict: 'FAIL' }) })]), now: () => time })).resolves.toBe(true);
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt() })], { permission: 'read' }), now: () => time })).resolves.toBe(true);
+      // Permission lookup error fails safe -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([comment({ body: v3Receipt() })], { failPermission: true }), now: () => time })).resolves.toBe(true);
+      // Unexpected API error fails safe -> true
+      await expect(probeToolchainNeeded({ event: prEvent, env: prEnvNoOut, api: makeApi([], { fail: true }), now: () => time })).resolves.toBe(true);
+      expect(readFileSync(outputPath, 'utf8')).toBe('needs_install=false\nneeds_install=true\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports awaiting_receipt errors with exit code 78, notice, and step summary, and other errors with exit code 1', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'openlup-cli-error-'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const summaryPath = join(dir, 'summary.md');
+      const awaiting = Object.assign(new Error('needs_agent_review: no receipt comment yet'), { code: 'awaiting_receipt', pr: 12, head: receipt.head });
+      await expect(reportQueueCliError(awaiting, { GITHUB_STEP_SUMMARY: summaryPath })).resolves.toBe(EXIT_AWAITING_RECEIPT);
+      expect(EXIT_AWAITING_RECEIPT).toBe(78);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('::notice title=Awaiting review receipt::'));
+      expect(err).toHaveBeenCalledWith('needs_agent_review: no receipt comment yet');
+      expect(readFileSync(summaryPath, 'utf8')).toContain(`PR #12 (\`${receipt.head}\`)`);
+
+      log.mockClear();
+      err.mockClear();
+      await expect(reportQueueCliError(new Error('unexpected failure'), { GITHUB_STEP_SUMMARY: summaryPath })).resolves.toBe(1);
+      expect(log).not.toHaveBeenCalled();
+      expect(err).toHaveBeenCalledWith('unexpected failure');
+    } finally {
+      log.mockRestore();
+      err.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

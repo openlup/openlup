@@ -96,7 +96,7 @@ unchanged.
 
 Reference renewal execution, readback, recovery guidance, setup routes, channel
 list and activation use the experimental
-[reference-support exports](../../packages/platform/README.md#reference-support-surface).
+[reference-support exports](PLATFORM_PACKAGE_REFERENCE.md#reference-support-surface).
 SDK/HTTP construction, flags and the simulator stay host-owned. Prepared attempts
 re-export the package's `ProviderAttemptPreDispatchError` with one class identity.
 
@@ -496,7 +496,7 @@ owner TEST evidence. See [the payment adapter contract](CANONICAL_CONTRACTS.md#o
 and [A2 ledger](plans/oss-a2-payment-adapters.md).
 
 The vendor subpaths also expose the eleven bounded experimental
-[reference-support helpers](../../packages/platform/README.md#reference-support-surface).
+[reference-support helpers](PLATFORM_PACKAGE_REFERENCE.md#reference-support-surface).
 The root execution/readback bindings consume those contributed implementations
 instead of retaining duplicate algorithms. Reference flags, SDK construction,
 payer fallback, repair handoffs and localized return presentation stay with the
@@ -1384,8 +1384,10 @@ current page snapshot while status evidence deduplicates by occurrence.
 Packing consumes frozen reservations from accepted dispatch commitments without
 manufacturing a label. Provider exceptions hold the order without rewriting the
 parcel FSM; newer eligible status evidence heals only proven machine scope,
-independently of arrival. A delivered observation without tracking records no
-arrival or alignment. Existing operator commands provide the manual path.
+independently of arrival. Verified delivered webhooks without incoming tracking
+can record arrival when the native store proves an exact parcel, one existing
+provider-bound tracking number and an explicit occurrence time. Operator
+commands provide the manual path when that proof is incomplete.
 The [recipe](../../packages/core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation)
 owns channel, checkpoint and accounting composition. Construction registers no
 scheduler, changes no unbound fallback and establishes no hosted qualification.
@@ -2316,7 +2318,7 @@ explicit future acceptance.
 Place server orchestration in the existing platform package's exact
 `subscriptions` entry and browser-shareable declarations in its type-only
 `subscriptions/contracts` entry. No new package, dependency, testing subpath or
-star export is needed. The [package entry](../../packages/platform/README.md#subscription-contracts-and-renewal-port)
+star export is needed. The [package entry](PLATFORM_PACKAGE_REFERENCE.md#subscription-contracts-and-renewal-port)
 links to this owner for concrete carriers, the unchanged hosted
 cycle/refusal/failure contribution and its characterization. Hosted RPC carriers stay distinct from native claims;
 the local prepared-attempt type projection preserves the existing M07 shape
@@ -3006,8 +3008,12 @@ keeps its existing channel enum and persisted values. The maintained public
 [reference binding](../../server/domains/platform/platformWatchdogService.ts)
 supplies the existing domain evaluator. The package retains keyed queue ordering,
 bounded concurrency, draining on failure, serialized alert delivery, persistent
-backoff, escalation and snooze semantics. `checkOnly` evaluates without ledger or
-notification writes. The smaller
+backoff, escalation and snooze semantics. A host can build
+`createBatchedWatchdogAlertUpsert` once per run to group up to four already
+admitted writes. The host prepares detached inputs and applies its existing
+store transition, then returns one zero-based indexed outcome per input. The
+adapter checks the complete reply before settling individual writes. `checkOnly`
+evaluates without ledger or notification writes. The smaller
 [control-plane tick](../../packages/platform/src/operations/server/controlPlaneWatchdog.ts)
 evaluates enabled persisted job failures and records the existing heartbeat key.
 Alert overview uses a stale or absent heartbeat to report unknown health even
@@ -3575,7 +3581,7 @@ remain [M14 obligations](plans/oss-m14-operations-portability.md), including the
 ## Normalized channel ingest
 
 The channels module lives at existing Platform subpaths; see the
-[package contract](../../packages/platform/README.md#channels). Browser-safe
+[package contract](PLATFORM_PACKAGE_REFERENCE.md#channels). Browser-safe
 contracts/helpers remain separate from Node orchestration. Hosts inject the
 existing order, payment, inventory, catalog-history and connection owners,
 provider decoding and enablement. This module creates no second stock, payment,

@@ -137,6 +137,27 @@ These forwards use the reviewed default-ACL preimage for the two base functions.
 An installation with an explicit ACL on either base function requires separate
 review before applying the ACL forward.
 
+## Checkout abandonment predicate grant
+
+The [grant forward](../../db/platform/migrations/20261128230001_checkout_abandonment_safety_execute_grant.sql)
+creates `public.commerce_checkout_abandonment_safe_runtime(uuid)`, a
+`SECURITY DEFINER` entry with a pinned `search_path` that returns
+`public.commerce_initial_checkout_abandonment_safe(uuid)` unchanged. It revokes
+the entry from PUBLIC, `anon` and `authenticated` and grants EXECUTE to
+`service_role` where that role exists. The predicate keeps its definition and
+ACL: it was created inside the native store class, by
+`20261110100000_checkout_recovery_waves.sql`, so the grant-only rail, which
+admits only base-chain functions, does not apply, and the catalog boundary
+refuses an ACL change on a replaced function. A created function may carry the
+closed `service_role` grant. A qualified runtime login inherits that grant and
+evaluates the sweep's predicate before it asks for a buyer-requested
+cancellation; calling the predicate directly still refuses. The migration
+ledger applies the forward once. Repeating its grant blocks, applying it
+without `service_role`, or replacing the predicate later leaves the entry and
+its grants as they were; the
+[grant witness](../../tests/postgres/checkoutAbandonmentSafetyGrant.test.ts)
+covers each case.
+
 ## Native renewal stock protection
 
 The [renewal credit aggregation forward](../../db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql)
@@ -217,6 +238,20 @@ before enabling database adapters. It is not evidence of schema compatibility.
 Frozen historical record (2026-11-13) archived in [Data and migrations evidence](history/data-and-migrations-evidence-2026-11-13.md#data-ownership-archived-evidence).
 
 ## Retained renewal storage
+
+`public.subscription_read_frozen_renewal_generation(uuid,uuid)` reads the original UTC anchor
+and frozen agreement by operation and commercial generation. Existing operations use their
+row UUID for both coordinates. The [projection contract](../../tests/postgres/subscriptionPublicRenewalFixture.ts)
+pins the exact keys, types and optional members. Unavailable scalar fields and singular
+objects are null. A missing required line member makes `lines` null, and missing retained
+line provenance yields an empty array. The roster requires the stored acceptance fingerprint
+to match the operation fingerprint. `cycleNumber` is the persisted operation counter as a
+JSON string. Only line unit amount, flat shipping and free shipping threshold are JSON
+numbers. Treat returned strings as opaque in money calculations and resolve retained provenance
+through its owners. Use the persisted claim identity key for
+legacy readback. Recover both coordinates after an invalid or mismatched pair. For an absent
+root, check the installation and recover the original pair. Use the installed server role for
+permission refusals.
 
 The subscription-notice forward preserves the reminder ledger's renewal-day
 identity and stores new queued charge facts in `subscription_reminder_ledger.renewal_at`;
@@ -324,7 +359,7 @@ Profile writes precede a separate event append; failures can leave an updated
 profile without a replay event. A recorded key returns current profile state
 without another write/event. Correction keys are stored without deduplication,
 and ownership is through the invoice document's order. Invoice bytes and fiscal
-state are unchanged. The [package recipe](../../packages/platform/README.md#customer-account-events-and-mutations)
+state are unchanged. The [package recipe](PLATFORM_PACKAGE_REFERENCE.md#customer-account-events-and-mutations)
 owns validation policy and handler composition.
 
 Payloads and client/document/key links are personal data, including free-text
@@ -361,7 +396,7 @@ fixed search paths and EXECUTE only for `service_role`; PUBLIC, anon and
 authenticated have no table or routine access. The table is `block` classified
 for lead absorption, with only the admitted client-ID census column/policy.
 Saved address and event writes retain their separate-commit failure/replay rules;
-see the [package recipe](../../packages/platform/README.md#saved-customer-address-book).
+see the [package recipe](PLATFORM_PACKAGE_REFERENCE.md#saved-customer-address-book).
 
 All row content, including canonical keys, company/tax/contact/free text,
 last-use/source metadata and possible pickup history, is personal data. The
@@ -427,7 +462,7 @@ is a sparse descriptor, not an install chain. The migration adds a catalogue-loc
 receipt relation and human-session preview/apply routines. No catalogue or
 subscription row is backfilled and no capability is activated. Existing readers
 retain ordinary price-entry storage; new callers explicitly bind the
-[pricing use case](../../packages/platform/README.md#pricing).
+[pricing use case](PLATFORM_PACKAGE_REFERENCE.md#pricing).
 
 Receipts and price history are authoritative connected-store transfer data.
 Capture and restore exact command keys, fingerprints, actor metadata and original
@@ -527,6 +562,27 @@ write locks. Policy arithmetic runs with the function owner's privileges.
 The [PostgreSQL parity witness](../../tests/postgres/catalogAdmission.test.ts)
 compares rounded quote and preview amounts and checks the readiness gates at
 zero and positive results.
+
+### Derived pricing for native bundle edits
+
+The `subscription_edit_derived_prices` forward
+uses the subscription's existing stored selector for each edit line, including
+zero-priced lines. When a line has no stored price, the native previews derive
+its unit from the subscription's price list and currency. Both lookups use the
+same database instant after the subscription lock is acquired. Run fresh
+previews in `READ COMMITTED` or `READ UNCOMMITTED`. If a preview refuses with
+`subscription_command_admission_isolation_unsupported`, roll back and retry in
+either mode. Choose an available bundle or restore eligible
+catalogue pricing if a fresh preview returns `subscription_edit_catalog_unavailable`.
+
+The customer preview requires matching renewal terms and a positive merchandise
+subtotal. Acceptance uses the saved quote to update the account template and
+future renewal terms together. The next cycle stays at its scheduled instant,
+and an existing renewal operation keeps its frozen terms. Re-previewing a
+saved quote retains its price and expiry. It reports that the quote cannot be
+applied if a quoted SKU was deleted, the subtotal is zero, the renewal terms
+are missing or in another currency, or attached catalogue acceptance covers
+different SKUs or quantities.
 
 ### Admission fence lock order
 
@@ -650,7 +706,7 @@ its original acceptance on replay.
 | `catalog_accepted_reference_mismatch` | Capture the reference from the SKU revision's issuing publication. |
 | `catalog_retained_revision_unavailable` | Recover the issuing publication and SKU revision from the retained catalogue. |
 | `catalog_acceptance_invalid` | Supply a schema-2 acceptance with 1 to 100 distinct SKU identities and codes. |
-| `catalog_acceptance_line_mismatch` | Register matching purchase lines from the persisted draft, preview and apply a fresh edit quote, or rebuild the snapshot from the current due subscription. Follow the SQL hint for the operation that refused. |
+| `catalog_acceptance_line_mismatch` | For governed adjustment or claim mismatches, recreate the draft from the frozen quote and its promotion records. For line mismatches, follow the SQL hint to register matching purchase lines from the persisted draft, preview and apply a fresh edit quote, or rebuild the snapshot from the current due subscription. |
 | `catalog_acceptance_receipt_mismatch` | Use this order's persisted draft receipt and its original key. |
 | `catalog_acceptance_snapshot_mismatch` | Use the stored renewal operation, its original acceptance and its frozen snapshot. |
 | `catalog_acceptance_snapshot_immutable` | Replay the renewal operation with its original acceptance and frozen snapshot. |
@@ -1233,6 +1289,12 @@ search path changes.
 If a retained-store packet has an unknown or mismatched inventory, the remedy is
 `capture the source and restore it with the same OpenLup version on a pristine target of the same profile; upgrade the source within its installed profile first if it is older`.
 If no such target can be provisioned, connected-store restore is unavailable for that pair.
+
+This version refuses captures containing stamped governed drafts or their
+marked draft-created events before connecting to the target. Keep the capture
+for a version that supports their restore.
+If capture refuses outside-profile source data, clean the source or use a supported source.
+If restore refuses outside-profile target data, provision a pristine target of the same profile.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new

@@ -96,9 +96,9 @@ local lock; project names and labels are unique. Cleanup removes proof container
 networks, volumes, built images and scratch copies, also on failure. Failed cleanup
 exits nonzero; the prepared application remains for inspection.
 
-The passwordless database is acceptable only as the starter’s own isolated,
-loopback-only, disposable local demonstration. This establishes nothing about
-real credentials, a hosted database, TLS or production deployment.
+The starter's isolated, loopback-only proof uses SCRAM for the application
+database login. The disposable demonstration does not qualify a hosted
+database, TLS or a production deployment.
 
 The proof covers an application-image swap over an unchanged schema and package
 set, for the two records it wrote. It says nothing about rolling back a package

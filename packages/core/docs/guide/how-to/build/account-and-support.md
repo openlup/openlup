@@ -10,14 +10,14 @@ routes and operator routes separately authorized.
 
 Use `@openlup/platform/account-support` for runtime composition and
 `@openlup/platform/account-support/contracts` for browser-shareable types.
-See the [runtime API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support.api.md) and
-[contracts API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/account-support-contracts.api.md)
+See the [runtime API report](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/account-support.api.md) and
+[contracts API report](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/api/account-support-contracts.api.md)
 for their inventories. Contribution descriptors come from
 `@openlup/platform/composition`. Owner DTOs retain generic frozen money and
 private extensions.
 
 For the declared selection boundary, consult the
-[package reference](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/AGENTS.md#subpath-maturity).
+[package reference](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/packages/platform/AGENTS.md#subpath-maturity).
 
 ## Bind reads to the customer
 
@@ -174,12 +174,12 @@ profile does not select it for checkout.
 
 Select the mutation port as the self-service facade's `profile` lane. It also
 supplies `requestInvoiceCorrection` and metadata-only `readEvents` for the
-recent events within the [mutation port's read bound](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/README.md#customer-account-events-and-mutations). Profile names collapse whitespace; empty or null clears a
+recent events within the [mutation port's read bound](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-account-events-and-mutations). Profile names collapse whitespace; empty or null clears a
 field, and omission preserves it. Email is not an editable field. Your phone
 policy supplies the calling prefix and must preserve the native phone shape.
 
 The schema policy may narrow the native text and collection limits, but cannot
-widen them. Consult the [mutation schema contract](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/README.md#customer-account-events-and-mutations)
+widen them. Consult the [mutation schema contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-account-events-and-mutations)
 for the exact bounds and phone shape. Invalid policy construction throws
 `customer_account_policy_invalid`.
 
@@ -207,7 +207,7 @@ The billing-profile handler supports GET/POST/PATCH/DELETE with authenticated
 identity, strict requests/responses and your responder/messages. Consumer
 signatures require no driver types. Tax policy cannot widen the fixed limits
 or bypass the native weighted checksum. Exact validation belongs to the
-[billing schema contract](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/README.md#customer-billing-profiles-and-frozen-invoice-buyers). Customer-supplied verification level,
+[billing schema contract](https://github.com/openlup/openlup/blob/openlup-core-v1.4.0/docs/platform/PLATFORM_PACKAGE_REFERENCE.md#customer-billing-profiles-and-frozen-invoice-buyers). Customer-supplied verification level,
 source and evidence are stored facts, not a registry verification workflow.
 
 Updating a missing or foreign profile refuses with
@@ -261,6 +261,13 @@ enforce the issued claim. Surface
 completion. Original attribution remains durable when another authorized human
 resumes the command. Phone, recovery, absorption and subscription results remain
 their owners' objects.
+
+When each call opens its own managed database transaction, wrap the executor
+with `withManagedOperatorDeadlockRetry` to retry the subscription action and
+recovery-issue RPCs on a returned PostgreSQL `40P01`. The wrapper makes at most
+three calls with the original arguments and key. The host supplies the delay
+and can observe the first deadlock and exhaustion through redacted events.
+Business refusals and transport exceptions keep their existing handling.
 
 `createPostgresOperatorAuthority` needs a transaction executor and the same
 authority options. Native email, phone and account linking return

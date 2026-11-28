@@ -3,10 +3,10 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from 'node:os';
 import { env as processEnvironment } from 'node:process';
 import { delimiter, extname, join, posix, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ALL_WORKFLOW_SCOPES_TRUE, excludedToolingTests, isGlobalBailoutScript, NON_BAILOUT_SCRIPTS, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
+import { afterEach, describe, expect, it } from 'vitest';
+import { PG_CLOSURE_AXES } from './agent-review-registry.mjs';
+import { ALL_WORKFLOW_SCOPES_TRUE, CONTROL_POSTGRES_SUITES, excludedToolingTests, isGlobalBailoutScript, loadPostgresSuiteClosures, NON_BAILOUT_SCRIPTS, PACKAGE_DOC_MD, PACKAGES_NON_DOC, parsePostgresSuiteClosures, PG_AXES, POSTGRES_SUITE_CLOSURES_PATH, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, SHARED_INPUTS, TOOLING_INPUTS, workflowScopeFromEvent, workflowScopeFromPaths, writeTestScope, writeWorkflowScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -32,7 +32,7 @@ describe('conservative tooling scope', () => {
       .map(([test]) => test).sort());
     expect(excludedToolingTests(['packages/core/src/index.ts']))
       .toEqual(Object.entries(TOOLING_INPUTS)
-        .filter(([, inputs]) => !inputs.includes('packages/') && !inputs.includes('packages/core/src/'))
+        .filter(([, inputs]) => !inputs.includes('packages/') && !inputs.includes(PACKAGES_NON_DOC) && !inputs.includes('packages/core/src/'))
         .map(([test]) => test).sort());
   });
   it.each(['package.json', 'package-lock.json', 'vitest.config.ts', 'tsconfig.json', 'tsconfig.app.json',
@@ -267,60 +267,62 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
   });
-  const ownerWriteSuite = 'tests/postgres/catalogAdmissionOwnerWrite.test.ts';
-  const runtimeCommitSuite = 'tests/postgres/catalogAdmissionRuntimeCommit.test.ts';
-  const draftSuites = [ownerWriteSuite, runtimeCommitSuite];
-  const restoreSuite = 'tests/postgres/m14RestrictedConnectedRestore.test.ts';
-  const restoreFixtures = [
-    'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
-    'tests/postgres/catalogPublicationFixture.ts',
-  ];
+  it('loads the migrated governed-draft and renewal-destination suites from config/ci-postgres-suite-closures.json and keeps unlisted tests running', () => {
+    const ownerWriteSuite = 'tests/postgres/catalogAdmissionOwnerWrite.test.ts';
+    const runtimeCommitSuite = 'tests/postgres/catalogAdmissionRuntimeCommit.test.ts';
+    const draftSuites = [ownerWriteSuite, runtimeCommitSuite];
+    const renewalDestinationSuite = 'tests/postgres/renewalOrderDestinationV2.test.ts';
+    const renewalDestinationFixture = 'tests/postgres/renewalOrderDestinationV2.fixture.ts';
+    const migratedSuites = [...draftSuites, renewalDestinationSuite];
+    const restoreSuite = 'tests/postgres/m14RestrictedConnectedRestore.test.ts';
+    const restoreFixtures = [
+      'tests/postgres/catalogAdmissionOwnerWrite.fixture.ts',
+      'tests/postgres/catalogPublicationFixture.ts',
+    ];
+    const unlistedPgSuite = 'tests/postgres/unlistedHypothetical.test.ts';
+    const closures = loadPostgresSuiteClosures();
+    const unrelated = excludedToolingTests(['docs/platform/README.md']);
 
-  it.each([
-    { scenario: 'owner-write only', present: [ownerWriteSuite] },
-    { scenario: 'runtime-commit only', present: [runtimeCommitSuite] },
-    { scenario: 'both present', present: draftSuites },
-    { scenario: 'neither present', present: [] },
-    { scenario: 'owner-write throws EACCES', present: [runtimeCommitSuite], failure: { suite: ownerWriteSuite, code: 'EACCES' } },
-    { scenario: 'runtime-commit throws ELOOP', present: [ownerWriteSuite], failure: { suite: runtimeCommitSuite, code: 'ELOOP' } },
-  ])('registers present suites at import and keeps unlisted tests running ($scenario)', async ({ present, failure }) => {
-    vi.resetModules();
-    vi.doMock('node:fs', async () => {
-      const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
-      const statSync = (...args: Parameters<typeof actual.statSync>) => {
-        const file = args[0] instanceof URL ? fileURLToPath(args[0]) : args[0];
-        const suite = draftSuites.find(testPath => resolve(testPath) === file);
-        if (!suite) return actual.statSync(...args);
-        if (failure?.suite === suite) throw Object.assign(new Error('suite probe failed'), { code: failure.code });
-        return present.includes(suite) ? { isFile: () => true } : undefined;
-      };
-      return { ...actual, default: { ...actual, statSync }, statSync };
-    });
-    try {
-      const scope = await import('./ci-test-scope.mjs');
-      const unrelated = scope.excludedToolingTests(['docs/platform/README.md']);
-      for (const suite of draftSuites) {
-        expect(Object.hasOwn(scope.TOOLING_INPUTS, suite), suite).toBe(present.includes(suite));
-        expect(unrelated.includes(suite), suite).toBe(present.includes(suite));
-      }
-      expect(unrelated).toContain(restoreSuite);
-      for (const input of [
-        ...restoreFixtures,
-        'tests/postgres/subscriptionLifecycleClosureFixture.ts',
-        'tests/postgres/subscriptionNativeFixture.ts',
-        'examples/neutral-store/host/server.ts',
-      ]) {
-        const excluded = scope.excludedToolingTests([input]);
-        for (const suite of draftSuites) expect(excluded, `${suite} <- ${input}`).not.toContain(suite);
-        if (restoreFixtures.includes(input)) expect(excluded, input).not.toContain(restoreSuite);
-      }
-    } finally {
-      vi.doUnmock('node:fs');
-      vi.resetModules();
+    for (const suite of migratedSuites) {
+      expect(Object.hasOwn(closures, suite), suite).toBe(true);
+      expect(Object.hasOwn(TOOLING_INPUTS, suite), suite).toBe(true);
+      expect(unrelated, suite).toContain(suite);
     }
+    expect(Object.hasOwn(closures, unlistedPgSuite)).toBe(false);
+    expect(Object.hasOwn(TOOLING_INPUTS, unlistedPgSuite)).toBe(false);
+    expect(unrelated).not.toContain(unlistedPgSuite);
+    expect(unrelated).toContain(restoreSuite);
+
+    for (const input of [
+      ...restoreFixtures,
+      'tests/postgres/subscriptionLifecycleClosureFixture.ts',
+      'tests/postgres/subscriptionNativeFixture.ts',
+      'examples/neutral-store/host/server.ts',
+    ]) {
+      const excluded = excludedToolingTests([input]);
+      for (const suite of draftSuites) expect(excluded, `${suite} <- ${input}`).not.toContain(suite);
+      if (restoreFixtures.includes(input)) expect(excluded, input).not.toContain(restoreSuite);
+    }
+
+    for (const input of [
+      'src/pages/Home.tsx',
+      renewalDestinationFixture,
+      'tests/postgres/customerAccountMutations.fixture.ts',
+      'tests/postgres/destinationDocumentFixture.ts',
+      'tests/postgres/destinationReceiptFixture.ts',
+      'tests/postgres/orderMoneyV2Storage.fixture.ts',
+      'tests/postgres/subscriptionNativeFixture.ts',
+    ]) {
+      const excluded = excludedToolingTests([input]);
+      expect(excluded, `${renewalDestinationSuite} <- ${input}`).not.toContain(renewalDestinationSuite);
+    }
+    expect(excludedToolingTests([renewalDestinationFixture])).toContain(restoreSuite);
   });
   it('scopes all tests/postgres suites per-file and per-axis without broad tests/postgres/ prefixes', () => {
     const purePgSuites = [
+      'tests/postgres/catalogAdmissionIssueReader.test.ts',
+      'tests/postgres/catalogAdmissionIssueReaderAdminRails.test.ts',
+      'tests/postgres/catalogAdmissionIssueReaderRails.test.ts',
       'tests/postgres/catalogPublication.test.ts',
       'tests/postgres/connectedStoreCatalogRevisions.test.ts',
       'tests/postgres/connectedStorePromotionClaims.test.ts',
@@ -331,6 +333,9 @@ describe('conservative tooling scope', () => {
       'tests/postgres/m14QualifiedAdminComposition.test.ts',
       'tests/postgres/m14RestrictedConnectedRestore.test.ts',
       'tests/postgres/m14RestrictedConnectedRestoreMatrix.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixNeonOperator.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsManaged.test.ts',
+      'tests/postgres/m14RestrictedConnectedRestoreMatrixRdsOperator.test.ts',
       'tests/postgres/subscriptionNoticeProducers.test.ts',
       'tests/postgres/subscriptionRetainedRenewal.test.ts',
     ];
@@ -352,7 +357,7 @@ describe('conservative tooling scope', () => {
       'tests/postgres/subscriptionPublicRenewal.test.ts',
     ];
     const scopedPgSuites = all.filter(test => test.startsWith('tests/postgres/'));
-    expect(scopedPgSuites.length).toBeGreaterThanOrEqual(261);
+    expect(scopedPgSuites.length).toBeGreaterThanOrEqual(272);
 
     // Unrelated docs exclude every scoped PostgreSQL suite.
     const docsExcluded = excludedToolingTests(['docs/platform/README.md']);
@@ -414,6 +419,19 @@ describe('conservative tooling scope', () => {
       expect(dataDocTrigger).not.toContain(suite);
     }
     expect(dataDocTrigger).toContain('tests/postgres/catalogPublication.test.ts');
+
+    const genericPackageDoc = excludedToolingTests(['packages/core/docs/guide/concepts/personal-data.md']);
+    expect(genericPackageDoc).toContain('tests/postgres/catalogPublication.test.ts');
+    expect(genericPackageDoc).toContain('tests/postgres/catalogStorefrontPage.test.ts');
+
+    const quotePricesDoc = excludedToolingTests(['packages/core/docs/guide/how-to/build/quote-prices.md']);
+    expect(quotePricesDoc).not.toContain('tests/postgres/commerceMoneyLimitsV2.test.ts');
+    expect(quotePricesDoc).not.toContain('tests/postgres/commerceQuoteV2.test.ts');
+    expect(quotePricesDoc).toContain('tests/postgres/catalogPublication.test.ts');
+
+    const customizeStarterDoc = excludedToolingTests(['packages/core/docs/guide/how-to/build/customize-the-starter.md']);
+    expect(customizeStarterDoc).not.toContain('tests/postgres/catalogStorefrontPage.test.ts');
+    expect(customizeStarterDoc).toContain('tests/postgres/catalogPublication.test.ts');
   });
   it('keeps the publication assignment suite always eligible and retains quote tests on recipe edits', () => {
     const assignmentSuite = 'tests/postgres/catalogPublicationTaxAssignments.test.ts';
@@ -574,7 +592,9 @@ describe('PostgreSQL AST closure soundness', () => {
   const BARE_ROOT_DIRS = new Set(['src', 'api', 'mcp', 'examples', 'supabase', 'docs']);
   const KNOWN_PREFIXES = ['src/', 'api/', 'mcp/', 'examples/', 'supabase/', 'docs/', 'config/', 'tests/', 'db/', 'packages/', 'server/', 'scripts/'];
   const VITEST_MOCK_METHODS = new Set(['mock', 'doMock', 'importActual', 'importMock']);
-  const covers = (input: string, target: string) => (input.endsWith('/') ? target === input || target.startsWith(input) : target === input);
+  const covers = (input: string, target: string) => (input === PACKAGES_NON_DOC
+    ? target.startsWith('packages/') && !PACKAGE_DOC_MD.test(target)
+    : input.endsWith('/') ? target === input || target.startsWith(input) : target === input);
 
   function createAstClosureScanner(rootDir: string) {
     const pkgExports = new Map<string, { dir: string; exports: Record<string, unknown> }>();
@@ -847,7 +867,7 @@ describe('PostgreSQL AST closure soundness', () => {
     };
 
     const pgEntries = Object.entries(TOOLING_INPUTS).filter(([test]) => test.startsWith('tests/postgres/'));
-    expect(pgEntries.length).toBeGreaterThanOrEqual(261);
+    expect(pgEntries.length).toBeGreaterThanOrEqual(272);
 
     const violations: string[] = [];
     for (const [testPath, declaredInputs] of pgEntries) {
@@ -864,7 +884,7 @@ describe('PostgreSQL AST closure soundness', () => {
       if (!declaredInputs.some(input => covers(input, testPath))) {
         violations.push(`${testPath}: does not cover its own file path`);
       }
-      const closureDeps = collectClosure(testPath, { stopAtPackages: declaredInputs.includes('packages/') });
+      const closureDeps = collectClosure(testPath, { stopAtPackages: declaredInputs.includes('packages/') || declaredInputs.includes(PACKAGES_NON_DOC) });
       for (const dep of closureDeps) {
         if (dep.includes('//')) {
           violations.push(`${testPath}: AST closure emitted unnormalized '//' path ${dep}`);
@@ -1053,6 +1073,27 @@ describe('workflow scope gate (--workflow-outputs)', () => {
       run_install_browser: true,
       run_install_pack: true,
     });
+    expect(workflowScopeFromPaths(['packages/core/docs/guide/concepts/personal-data.md'])).toEqual({
+      run_pgtap: false,
+      run_reference_build: false,
+      run_package_gates: true,
+      run_install_browser: false,
+      run_install_pack: true,
+    });
+    expect(workflowScopeFromPaths(['packages/core/docs/guide/how-to/build/customize-the-starter.md'])).toEqual({
+      run_pgtap: false,
+      run_reference_build: false,
+      run_package_gates: true,
+      run_install_browser: true,
+      run_install_pack: true,
+    });
+    expect(workflowScopeFromPaths(['packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/pack.ts'])).toEqual({
+      run_pgtap: false,
+      run_reference_build: true,
+      run_package_gates: true,
+      run_install_browser: true,
+      run_install_pack: true,
+    });
     for (const path of ['examples/neutral-store/host/server.ts', 'tests/helpers/postgresContainer.ts']) {
       expect(workflowScopeFromPaths([path]), path).toEqual({
         run_pgtap: false,
@@ -1216,5 +1257,82 @@ describe('workflow scope gate (--workflow-outputs)', () => {
       encoding: 'utf8',
       stdio: 'pipe',
     })).toThrow();
+  });
+});
+
+describe('PostgreSQL suite closures registry', () => {
+  const canon = (obj: unknown) => `${JSON.stringify(obj, null, 2)}\n`;
+
+  it('stores valid canonical JSON, keeps control suites hardcoded, and retains agent-review-registry.test.ts on edits', () => {
+    expect(POSTGRES_SUITE_CLOSURES_PATH).toBe('config/ci-postgres-suite-closures.json');
+    const raw = readFileSync(POSTGRES_SUITE_CLOSURES_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as { schemaVersion: number; suites: Record<string, string[]> };
+    expect(parsed.schemaVersion).toBe(1);
+    expect(raw).toBe(canon(parsed));
+    expect(loadPostgresSuiteClosures()).toEqual(parsed.suites);
+
+    expect(CONTROL_POSTGRES_SUITES).toEqual([
+      'tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts',
+      'tests/postgres/reviewedBatchForwards.test.ts',
+      'tests/postgres/subscriptionExactInstallation.test.ts',
+    ]);
+    for (const control of CONTROL_POSTGRES_SUITES) {
+      expect(Object.hasOwn(parsed.suites, control), control).toBe(false);
+    }
+    expect(TOOLING_INPUTS['tests/postgres/subscriptionExactInstallation.test.ts']).toContain('tests/postgres/current-installation-inventory.json');
+    expect(TOOLING_INPUTS['tests/postgres/subscriptionExactInstallation.test.ts']).toContain('tests/postgres/nativeStoreForwardCatalog.shared.ts');
+    expect(excludedToolingTests([POSTGRES_SUITE_CLOSURES_PATH])).not.toContain('scripts/agent-review-registry.test.ts');
+    expect(excludedToolingTests([POSTGRES_SUITE_CLOSURES_PATH])).not.toContain('scripts/ci-test-scope.test.ts');
+  });
+
+  it('maintains 1-to-1 axis parity with agent-review-registry.mjs and triggers suites per @axis', () => {
+    expect(PG_CLOSURE_AXES).toEqual(Object.keys(PG_AXES).sort());
+    const closures = loadPostgresSuiteClosures();
+    for (const [axis, prefixes] of Object.entries(PG_AXES)) {
+      const suitesUsingAxis = Object.entries(closures)
+        .filter(([, extras]) => extras.includes(axis))
+        .map(([suite]) => suite);
+      for (const prefix of prefixes) {
+        const excluded = excludedToolingTests([prefix.endsWith('/') ? `${prefix}axis-witness.ts` : prefix]);
+        for (const suite of suitesUsingAxis) {
+          expect(excluded, `${axis} via ${prefix} must retain ${suite}`).not.toContain(suite);
+        }
+      }
+    }
+  });
+
+  it.each<[string, string]>([
+    ['syntax error', '{not json'],
+    ['duplicate suite key', '{"schemaVersion":1,"suites":{"tests/postgres/a.test.ts":[],"tests/postgres/a.test.ts":[]}}'],
+    ['duplicate top-level key', '{"schemaVersion":1,"schemaVersion":1,"suites":{}}'],
+    ['bad schemaVersion', canon({ schemaVersion: 2, suites: {} })],
+    ['extra top-level key', canon({ schemaVersion: 1, suites: {}, extra: true })],
+    ['wrong top-level key order', canon({ suites: {}, schemaVersion: 1 })],
+    ['non-canonical 4-space indentation', `${JSON.stringify({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': [] } }, null, 4)}\n`],
+    ['missing trailing newline', canon({ schemaVersion: 1, suites: {} }).trimEnd()],
+    ['unsorted suite keys', canon({ schemaVersion: 1, suites: { 'tests/postgres/z.test.ts': [], 'tests/postgres/a.test.ts': [] } })],
+    ['unsorted inputs', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['tests/postgres/b.fixture.ts', '@api'] } })],
+    ['invalid suite key outside tests/postgres/', canon({ schemaVersion: 1, suites: { 'src/a.test.ts': [] } })],
+    ['suite key with ..', canon({ schemaVersion: 1, suites: { 'tests/postgres/../a.test.ts': [] } })],
+    ['suite key with //', canon({ schemaVersion: 1, suites: { 'tests/postgres//a.test.ts': [] } })],
+    ['suite key with backslash', canon({ schemaVersion: 1, suites: { 'tests/postgres/sub\\a.test.ts': [] } })],
+    ['suite key with hidden dot segment', canon({ schemaVersion: 1, suites: { 'tests/postgres/.a.test.ts': [] } })],
+    ['non-test suite key', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.ts': [] } })],
+    ['control suite collision (subscriptionExactInstallation)', canon({ schemaVersion: 1, suites: { 'tests/postgres/subscriptionExactInstallation.test.ts': [] } })],
+    ['control suite collision (reviewedBatchForwards)', canon({ schemaVersion: 1, suites: { 'tests/postgres/reviewedBatchForwards.test.ts': [] } })],
+    ['unknown @axis', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['@doesNotExist'] } })],
+    ['broad tests/postgres/ prefix', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['tests/postgres/'] } })],
+    ['parent traversal input path', canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['../escape.ts'] } })],
+  ])('fails closed in parsePostgresSuiteClosures on %s', (_label, source) => {
+    expect(() => parsePostgresSuiteClosures(source)).toThrow();
+  });
+
+  it('fails closed in loadPostgresSuiteClosures when file is missing or malformed', () => {
+    const dir = scratch();
+    expect(() => loadPostgresSuiteClosures(join(dir, 'missing.json'))).toThrow();
+    const badPath = join(dir, 'bad.json');
+    writeFileSync(badPath, canon({ schemaVersion: 1, suites: { 'tests/postgres/a.test.ts': ['tests/postgres/'] } }));
+    expect(() => loadPostgresSuiteClosures(badPath)).toThrow();
   });
 });

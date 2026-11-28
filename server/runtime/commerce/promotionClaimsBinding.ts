@@ -17,7 +17,7 @@ import {
 import { createSupabasePlatformJobRunLedger as createManagedJobRunLedger } from "../../adapters/supabase/platformJobRunLedger.js";
 import { createManagedPromotionClaimSweepPort as createManagedSweepPort } from "../../adapters/supabase/promotionClaims.js";
 import type { CommercePromoDataPort } from "../../domains/commerce/promoDataPort.js";
-import type { PromotionClaimSweepPort } from "../../domains/commerce/promotionClaimSweepPort.js";
+import type { PromotionClaimSweepPort } from "@openlup/platform/promotions";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 import type { PlatformJobRunLedgerPort } from "../../domains/platform/platformJobRunLedger.js";
 import type { PlatformJobInvocation } from "../../domains/platform/platformJobRunLedger.js";

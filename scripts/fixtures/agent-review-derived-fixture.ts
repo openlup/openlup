@@ -11,6 +11,7 @@ import { carrierLocale, landingMerge } from '../agent-review-landing.mjs';
 import { captureCommittedReviewCandidate, proveReviewIntegration } from '../agent-review-session.mjs';
 import { fixtureNpmCli, linkFixtureInstallation, localFixtureEnvironment } from './landing-test-environment.ts';
 import { checkPlatformMigrationProjection } from '../packages/platform-migration-projection.ts';
+import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from '../platform-migration-manifest.ts';
 
 export const CATALOGUE = 'config/openlup-publication-catalog.json';
 export const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
@@ -36,8 +37,8 @@ export const json = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
 
 const runLandingMerge = landingMerge as (
   root: string,
-  options?: { reSlot?: boolean; runCommand?: (command: string, args: string[]) => unknown },
-) => Promise<{ head: string; main: string; inventoryRefreshed: boolean }>;
+  options?: { reSlot?: boolean; verify?: boolean; target?: string; runCommand?: (command: string, args: string[]) => unknown },
+) => Promise<{ head: string; main: string; inventoryRefreshed: boolean; verified?: boolean }>;
 
 export interface DerivedFixture {
   root: string;
@@ -69,9 +70,10 @@ export interface DerivedFixture {
   cleanup: () => void;
 }
 
-export async function createDerivedFixture(options: { runInitialLanding?: boolean } = {}): Promise<DerivedFixture> {
+export async function createDerivedFixture(options: { runInitialLanding?: boolean; stubNpmEnv?: boolean } = {}): Promise<DerivedFixture> {
   const source = process.cwd();
   const runInitialLanding = options.runInitialLanding ?? true;
+  const stubNpmEnv = options.stubNpmEnv ?? true;
   const state: DerivedFixture = {
     root: '',
     base: '',
@@ -109,10 +111,19 @@ export async function createDerivedFixture(options: { runInitialLanding?: boolea
       expect(checkPlatformMigrationProjection(state.root, true)).toEqual([]);
       state.write(SQL_REFERENCE, syncSqlReference(state.root));
     },
-    fixtureCommand: (command: string, args: string[]) => execFileSync(command, args, {
-      cwd: state.root, env: fixtureEnvironment, encoding: 'utf8', timeout: 180000,
-      maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
-    }),
+    fixtureCommand: (command: string, args: string[]) => {
+      try {
+        return execFileSync(command, args, {
+          cwd: state.root, env: fixtureEnvironment, encoding: 'utf8', timeout: 240000,
+          maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException | null)?.code === 'ETIMEDOUT') {
+          throw new Error(`derived fixture command timed out after 240000ms in ${state.root}: ${command} ${args.join(' ')}`, { cause: error });
+        }
+        throw error;
+      }
+    },
     fixtureNpm: (...args: string[]) => state.fixtureCommand(process.execPath, [npmCli, ...args]),
     coldBuild: (...owners: string[]) => {
       for (const owner of owners) state.fixtureNpm('run', 'build', `--workspace=@openlup/${owner}`);
@@ -170,15 +181,16 @@ export async function createDerivedFixture(options: { runInitialLanding?: boolea
       await captureCommittedReviewCandidate(state.root, state.main, head),
     ),
     cleanup: () => {
-      vi.unstubAllEnvs();
+      if (stubNpmEnv) vi.unstubAllEnvs();
       if (state.root) rmSync(state.root, { recursive: true, force: true });
     },
   };
 
   try {
-    vi.stubEnv('npm_execpath', npmCli);
+    if (stubNpmEnv) vi.stubEnv('npm_execpath', npmCli);
     state.root = realpathSync(mkdtempSync(join(tmpdir(), 'openlup-derived-live-')));
     execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, state.root], { env: fixtureEnvironment, timeout: 30000 });
+    state.git('checkout', '-q', '--detach');
     // The clone already has HEAD. Overlay only differences during local development.
     const sourcePaths = (...args: string[]) => execFileSync('/usr/bin/git', args, { cwd: source, env: fixtureEnvironment, encoding: 'utf8' }).split('\0').filter(Boolean);
     const overlays = new Set([
@@ -241,8 +253,29 @@ export async function createDerivedFixture(options: { runInitialLanding?: boolea
           // Real Docker PostgreSQL measurement is witnessed in scripts/agent-review-derived-inventory.test.ts;
           // keep this unlisted scanner suite Docker-free while preserving exact current-only envelope semantics.
           const env = inventoryEnvelope(state.read(INVENTORY_PATH));
-          const nextCurrent = structuredClone(env.value.current) as { profiles: Record<string, { objectInventorySha256: string }> };
+          const manifest = JSON.parse(state.read(MIGRATION_REGISTRIES[0])) as PlatformMigrationManifest;
+          const selections = {
+            legacy: selectPlatformMigrationManifest(manifest, 'legacy'),
+            bootstrap: selectPlatformMigrationManifest(manifest, 'qualified-v2', { migrationIsBootstrap: true, hasRestore: true }),
+            separate: selectPlatformMigrationManifest(manifest, 'qualified-v2', { migrationIsBootstrap: false, hasRestore: true }),
+            'admin-managed': selectPlatformMigrationManifest(manifest, 'qualified-admin', { roleMode: 'installer-managed' }),
+            'admin-operator': selectPlatformMigrationManifest(manifest, 'qualified-admin', { roleMode: 'operator-provisioned' }),
+          };
+          const tailAnchor = 'db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql';
+          const nextCurrent = structuredClone(env.value.current) as {
+            profiles: Record<string, {
+              count: number;
+              exactTailCount: number;
+              objectInventorySha256: string;
+              tail: { file: string; sha256: string }[];
+            }>;
+          };
           for (const [profile, entry] of Object.entries(nextCurrent.profiles)) {
+            const plan = selections[profile as keyof typeof selections];
+            const tail = [plan.baseline, ...plan.forward].reverse();
+            entry.count = tail.length;
+            entry.exactTailCount = tail.findIndex(({ file }) => file === tailAnchor);
+            entry.tail = tail;
             entry.objectInventorySha256 = createHash('sha256')
               .update(`derived-fixture:${profile}:${state.read(MIGRATION_REGISTRIES[0])}`)
               .digest('hex');

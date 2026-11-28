@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { projectPromotionQuoteMoney, promotionQuoteMoneySections } from "./promotionQuoteBinding.js";
+import { projectPromotionQuoteMoney, promotionQuoteMoneySections } from "@openlup/platform/promotions";
 import { issuePromotionQuoteAcceptance, verifyPromotionQuoteAcceptanceWithOutcome } from "./promotionQuoteAcceptance.js";
 import { AT, terms, quote, request, response, schemas, responder } from "./acquisitionConsent.testFixtures.js";
 import { createCommerceQuoteHandler, createOfferPolicyReadinessCache, OFFER_POLICY_V2_READINESS_CONTRACT, AcquisitionTermsError } from "@openlup/platform/pricing";

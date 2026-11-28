@@ -165,11 +165,13 @@ Show offline: `show commerce.promotionCodeRedemption --json`.
 
 ## commerce.returnReasons
 
-Choose the allowed return reasons.
-Search terms include store orders, checkout processing.
+Configure the allowed return reason codes accepted for new return requests (return reasons, return vocabulary, reason codes).
+Search terms include return reasons, return request reason codes, return vocabulary, commerce_return_reasons.
 
-- Owner **commerce** · kind **cap** · runtime **read-only**
-- The native order service still enforces a fixed vocabulary.
+- Owner **commerce** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","reasons":["damaged","wrong_item","not_as_described","pet_refused","changed_mind","other"]}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- The six built-in return reason codes preserve the historical commerce_return_requests vocabulary when no commerce_return_reasons row is installed.
 
 Show offline: `show commerce.returnReasons --json`.
 
@@ -569,11 +571,13 @@ Show offline: `show shipping.addressRegions --json`.
 
 ## shipping.paymentMethodPreferences
 
-Save additional payment method preferences.
-Search terms include delivery destination, address details.
+Configure the allowed payment method preference codes accepted when customers save a payment preference (payment method preferences, saved payment methods, payment preference vocabulary).
+Search terms include payment method preferences, saved payment method kinds, shipping_payment_method_preferences.
 
-- Owner **shipping** · kind **cap** · runtime **read-only**
-- The customer preferences contract has a fixed payment method vocabulary.
+- Owner **shipping** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","methodKinds":["instant","card","transfer"]}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- The three built-in payment method kinds preserve the historical customer_payment_preferences vocabulary when no shipping_payment_method_preferences row is installed.
 
 Show offline: `show shipping.paymentMethodPreferences --json`.
 
@@ -759,11 +763,13 @@ Show offline: `show subscriptions.renewalPriceChanges --json`.
 
 ## subscriptions.rescheduleTimeZone
 
-Calculate a subscription reschedule date in the market time zone.
-Search terms include recurring orders, renewals.
+Calculate subscription reschedule calendar-day boundaries in a configured IANA time zone (reschedule time zone, slide calendar day, market timezone).
+Search terms include subscription reschedule time zone, slide calendar day, market timezone, IANA timezone.
 
-- Owner **subscriptions** · kind **cap** · runtime **read-only**
-- The native command compares dates using UTC days.
+- Owner **subscriptions** · kind **installed** · runtime **read-only**
+- Default is `{"revision":"default","timeZone":"UTC"}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- UTC preserves historical epoch-day and UTC calendar-day reschedule comparisons across subscription_apply_lifecycle_action, subscription_command_preview, subscription_command_apply, customer_support_apply_subscription_action_v1, and save-offer reschedule target calculation.
 
 Show offline: `show subscriptions.rescheduleTimeZone --json`.
 

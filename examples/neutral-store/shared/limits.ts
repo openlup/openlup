@@ -131,3 +131,106 @@ export function limitFor(action: CopyKey): NativeLimit | undefined {
 
 /** Release boundaries rendered from the same localized copy as checkout. */
 export const releaseLimits = ['attemptLimitsInterim', 'localDatabaseOnly', 'bundlePurchaseLater', 'acquisitionInterim', 'guestPurchase', 'guestRecovery'] as const satisfies readonly CopyKey[];
+
+/** Managed buyer texts of the checkout continuation panel and its answers. Panel texts are keyed by name, answers by code.
+ * `{minutes}` is the request-limit window, rounded up. A store that customises them re-applies them on upgrade. */
+export const checkoutContinuationCopy = Object.freeze({
+  heading: { en: 'Earlier order of this purchase', pl: 'Wcześniejsze zamówienie tego zakupu' },
+  intro: {
+    en: 'An earlier submit of this purchase created, or may have created, an order. Choose what happens to it before you submit different details.',
+    pl: 'Wcześniejsze wysłanie formularza tego zakupu utworzyło lub mogło utworzyć zamówienie. Zanim wyślesz inne dane, wybierz, co ma się z nim stać.',
+  },
+  resume: { en: 'Complete payment for the earlier order', pl: 'Dokończ płatność za wcześniejsze zamówienie' },
+  abandon: { en: 'Cancel the earlier order and start over', pl: 'Anuluj wcześniejsze zamówienie i zacznij od nowa' },
+  abandonDetail: {
+    en: 'Cancels the earlier unpaid order and releases its stock. Then submit the form again.',
+    pl: 'Anuluje wcześniejsze nieopłacone zamówienie i zwalnia zarezerwowany towar. Potem wyślij formularz ponownie.',
+  },
+  different: { en: 'Start a different purchase', pl: 'Rozpocznij inny zakup' },
+  differentDetail: {
+    en: 'Your next submit places a new order. The earlier order stays open until the store settles it, and a payment already started for it may still complete.',
+    pl: 'Następne wysłanie utworzy nowe zamówienie. Wcześniejsze zamówienie pozostaje otwarte, dopóki sklep go nie rozliczy, a rozpoczęta już płatność za nie może jeszcze zostać zrealizowana.',
+  },
+  limited: {
+    en: 'The store returned the order without a payment link because of its request limit. Try again in {minutes} min.',
+    pl: 'Sklep zwrócił zamówienie bez linku do płatności z powodu limitu żądań. Spróbuj ponownie za {minutes} min.',
+  },
+  differentStarted: {
+    en: 'A different purchase was started. Your next submit places a new order.',
+    pl: 'Rozpoczęto inny zakup. Następne wysłanie formularza złoży nowe zamówienie.',
+  },
+  abandoned: {
+    en: 'The earlier order was cancelled and its stock released. Submit the form to place a new order.',
+    pl: 'Wcześniejsze zamówienie zostało anulowane, a towar zwolniony. Wyślij formularz, aby złożyć nowe zamówienie.',
+  },
+  changedUnconfirmed: {
+    en: 'Your changed details were not sent. An earlier submit of this purchase may have created an order: complete its payment as first submitted, cancel it and start over, or choose "Start a different purchase" to place a new order with these details.',
+    pl: 'Zmienione dane nie zostały wysłane. Wcześniejsze wysłanie formularza tego zakupu mogło utworzyć zamówienie: dokończ jego płatność w pierwotnej postaci, anuluj je i zacznij od nowa albo wybierz „Rozpocznij inny zakup”, aby złożyć nowe zamówienie z tymi danymi.',
+  },
+  resumeNotFound: {
+    en: 'No earlier order of this purchase was found yet. Submitting the details you first sent continues this purchase; to place an order with other details, choose "Start a different purchase".',
+    pl: 'Nie znaleziono jeszcze wcześniejszego zamówienia tego zakupu. Wysłanie pierwotnie podanych danych kontynuuje ten zakup; aby złożyć zamówienie z innymi danymi, wybierz „Rozpocznij inny zakup”.',
+  },
+  starter_checkout_changed: {
+    en: 'Your changed details were not applied and no second order was created. An earlier order of this purchase is unpaid: complete its payment as first submitted, or cancel it and start over.',
+    pl: 'Zmienione dane nie zostały zastosowane i nie utworzono drugiego zamówienia. Wcześniejsze zamówienie tego zakupu jest nieopłacone: dokończ jego płatność w pierwotnej postaci albo anuluj je i zacznij od nowa.',
+  },
+  starter_checkout_paid: {
+    en: 'The earlier order of this purchase is already paid, so nothing new was placed. Choose "Start a different purchase" to buy again.',
+    pl: 'Wcześniejsze zamówienie tego zakupu jest już opłacone, więc nic nowego nie zostało złożone. Wybierz „Rozpocznij inny zakup”, aby kupić ponownie.',
+  },
+  starter_checkout_not_payable: {
+    en: 'The earlier order of this purchase is closed or expired and cannot be paid here. A recovery e-mail sent earlier may still lead to it; the store handles any duplicate. Choose "Start a different purchase" to place a new order.',
+    pl: 'Wcześniejsze zamówienie tego zakupu jest zamknięte lub wygasło i nie można go tu opłacić. Wysłany wcześniej e-mail z linkiem może jeszcze do niego prowadzić; ewentualnym duplikatem zajmie się sklep. Wybierz „Rozpocznij inny zakup”, aby złożyć nowe zamówienie.',
+  },
+  starter_checkout_request_stale: {
+    en: 'The store was busy and placed nothing. Submit the same details again.',
+    pl: 'Sklep był zajęty i niczego nie zapisał. Wyślij te same dane ponownie.',
+  },
+  starter_checkout_not_found: {
+    en: 'No earlier order of this purchase exists, so nothing was continued or cancelled. Submit the form to place your order.',
+    pl: 'Nie ma wcześniejszego zamówienia tego zakupu, więc niczego nie kontynuowano ani nie anulowano. Wyślij formularz, aby złożyć zamówienie.',
+  },
+  starter_checkout_in_progress: {
+    en: 'The earlier submit may still be creating its order. Wait a moment and choose again, or submit the original details again to complete it.',
+    pl: 'Wcześniejsze wysłanie może nadal tworzyć zamówienie. Poczekaj chwilę i wybierz ponownie albo wyślij pierwotne dane jeszcze raz, aby je dokończyć.',
+  },
+  starter_checkout_not_abandonable: {
+    en: 'The earlier order cannot be cancelled here because a payment was started for it. Complete its payment, or start a different purchase.',
+    pl: 'Wcześniejszego zamówienia nie można tu anulować, ponieważ rozpoczęto jego płatność. Dokończ płatność albo rozpocznij inny zakup.',
+  },
+  starter_checkout_expired: {
+    en: 'To buy now, choose "Start a different purchase". The earlier order is older than its 24-hour payment link and gets no new link here. If no payment was ever started for it, "Cancel the earlier order and start over" cancels it instead.',
+    pl: 'Aby kupić teraz, wybierz „Rozpocznij inny zakup”. Wcześniejsze zamówienie jest starsze niż 24-godzinny link do płatności i nie otrzyma tu nowego linku. Jeśli nigdy nie rozpoczęto jego płatności, możesz zamiast tego wybrać „Anuluj wcześniejsze zamówienie i zacznij od nowa”.',
+  },
+  starter_command_conflict: {
+    en: 'Another request for this purchase was being saved at the same moment; nothing changed. Submit again in a moment. If this repeats after you started a different purchase of a first subscription, the earlier unpaid order still holds it: ask the store to cancel that order.',
+    pl: 'W tej samej chwili zapisywano inne żądanie tego zakupu; nic się nie zmieniło. Wyślij ponownie za chwilę. Jeśli powtarza się to po rozpoczęciu innego zakupu pierwszej subskrypcji, blokuje ją wcześniejsze nieopłacone zamówienie: poproś sklep o jego anulowanie.',
+  },
+  starter_attempt_limited: {
+    en: 'Too many checkout requests in a short time. Try again in {minutes} min.',
+    pl: 'Zbyt wiele żądań zamówienia w krótkim czasie. Spróbuj ponownie za {minutes} min.',
+  },
+  starter_storage_unavailable: {
+    en: 'This browser does not let the page keep your purchase in tab storage, so this page keeps it until a reload: submitting the form again continues the same purchase. A reload loses it and may create a second order, so do not reload before the order is placed. "Start a new action" starts a new purchase.',
+    pl: 'Ta przeglądarka nie pozwala stronie zachować zakupu w pamięci karty, więc strona przechowuje go do przeładowania: ponowne wysłanie formularza kontynuuje ten sam zakup. Przeładowanie go utraci i może utworzyć drugie zamówienie, więc nie przeładowuj strony przed złożeniem zamówienia. „Rozpocznij nowe działanie” rozpoczyna nowy zakup.',
+  },
+  starter_checkout_storage_unavailable: {
+    en: 'This browser refused to keep the details of this order in tab storage, so nothing was sent.',
+    pl: 'Przeglądarka odmówiła zachowania danych tego zamówienia w pamięci karty, więc niczego nie wysłano.',
+  },
+  starter_checkout_session_changed: {
+    en: 'The earlier order of this purchase was placed while you were signed in differently, so it cannot be reached now. Sign in or out as you were when you placed it, then choose again.',
+    pl: 'Wcześniejsze zamówienie tego zakupu złożono przy innym stanie logowania, więc teraz nie można do niego dotrzeć. Zaloguj się lub wyloguj się tak, jak przy jego składaniu, a potem wybierz ponownie.',
+  },
+} satisfies Record<string, Localized>);
+
+/** Managed text of the checkout and payment-status status lines, one per storefront state anchor they carry. */
+export const checkoutStateCopy = Object.freeze({
+  awaiting_payment: { en: 'Waiting for payment', pl: 'Oczekuje na płatność' },
+  details_changed: { en: 'Details changed: nothing was sent', pl: 'Dane zmienione: niczego nie wysłano' },
+  awaiting_authority: { en: 'Waiting for the payment outcome', pl: 'Oczekuje na wynik płatności' },
+  declined: { en: 'Payment declined', pl: 'Płatność odrzucona' },
+  paid: { en: 'Paid', pl: 'Opłacone' },
+  paid_pending_activation: { en: 'Paid; activation pending', pl: 'Opłacone; aktywacja w toku' },
+} satisfies Record<string, Localized>);

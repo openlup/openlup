@@ -23,3 +23,19 @@ export {
   type AppVerificationFinding,
   type AppVerificationReport,
 } from "./appVerification.js";
+export {
+  parseStorefrontVerdict,
+  storefrontVerdictJsonSchema,
+  type StorefrontVerdict,
+  type StorefrontFindingCode,
+} from "./storefrontVerdict.js";
+export { digestStorefrontFiles } from "./storefrontDigest.js";
+export {
+  parseStorefrontProofFile,
+  storefrontProofFileJsonSchema,
+  type StorefrontProofFile,
+} from "./storefrontProofFile.js";
+export {
+  storefrontCapabilities,
+  type StorefrontCapability,
+} from "./storefrontCapabilities.js";

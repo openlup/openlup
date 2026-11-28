@@ -7,7 +7,7 @@ import { createPostgresDestinationPort } from "@openlup/platform/commerce/server
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import { applyDemoSeed, demonstrationMarker } from "../../examples/neutral-store/installation/install.ts";
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
-import { createPostgresPurchaseRenewalWriter, createPostgresSubscriptionCommandStore } from "@openlup/platform/subscriptions";
+import { createNativeRenewalCodec, createPostgresPurchaseRenewalWriter, createPostgresRenewalStore, createPostgresSubscriptionCommandStore } from "@openlup/platform/subscriptions";
 import { createPostgresCommercePriceAuthorityReadPort } from "@openlup/platform/commerce/server/postgres";
 import { createCatalogPriceSetupHandler, createPostgresCatalogPriceSetupStore } from "@openlup/platform/pricing";
 import type { CatalogFactsProvenance } from "@openlup/platform/pricing/contracts";
@@ -251,7 +251,7 @@ it("admits the captured subscription only after activation and sees only committ
   await assertReadyOrder();
 });
 
-it("keeps a derived acquisition in the reprice census and attaches its original price context", async () => {
+it.each(["actor", "command", "frozen"] as const)("prices and applies a derived-only bundle after purchase-context recovery (%s)", async path => {
   const store = await acquisitionFixture();
   const { owner, runtime, list, product: skuId, sku } = store;
   const admin = randomUUID(), buyer = randomUUID();
@@ -397,8 +397,10 @@ it("keeps a derived acquisition in the reprice census and attaches its original 
     expect(await val(owner, `SELECT $2::timestamptz < next_cycle_at-make_interval(hours=>edit_window_hours) AS value
       FROM public.subscriptions WHERE id=$1`, [subscriptionId, editNow])).toBe(true);
     expect(await val(owner, "SELECT health_state AS value FROM public.subscription_method_states WHERE subscription_id=$1", [subscriptionId])).toBe("healthy");
-    const coreLines = [{ variantId: skuId, qty: 6 }];
-    const commands = createPostgresSubscriptionCommandStore({ async withTransaction(work) {
+    const newQuantity = 6, coreLines = [{ variantId: skuId, qty: newQuantity }];
+    const scheduledAt = String(await val(owner, `SELECT to_char(next_cycle_at AT TIME ZONE 'UTC',
+      'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS value FROM public.subscriptions WHERE id=$1`, [subscriptionId]));
+    const withTransaction = async <T>(work: (db: PoolClient) => Promise<T>) => {
       const db = await runtime.connect();
       try {
         await db.query("BEGIN");
@@ -407,13 +409,64 @@ it("keeps a derived acquisition in the reprice census and attaches its original 
         return result;
       } catch (error) { await db.query("ROLLBACK"); throw error; }
       finally { db.release(); }
-    } });
-    expect(await commands.preview({ actorId: buyer, clientId, subscriptionId, idempotencyKey: randomUUID(), action: "resize_bundle", now: editNow,
-      payload: { expectedTemplateVersion: 1, cadenceDays: 28, coreLines, compositionConstraint: { kind: "units", value: 6 } } }))
-      .toMatchObject({ status: "refused", reason: "subscription_edit_catalog_unavailable" });
-    await refuses(asActor(buyer, db => val(db, "SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS value",
-      [subscriptionId, randomUUID(), JSON.stringify(coreLines)])), "subscription_edit_catalog_unavailable", "22023");
-    expect(await subscription()).toEqual(bound);
+    };
+    const operations = async () => (await owner.query(
+      "SELECT id,identity_key,scheduled_at::text,cycle_snapshot::text FROM public.subscription_renewal_operations WHERE subscription_id=$1",
+      [subscriptionId])).rows;
+    const renewals = createPostgresRenewalStore(runtime, createNativeRenewalCodec(), withTransaction);
+    const claim = async (qty: number, unitAmountMinor: number) => {
+      const snapshot = await renewals.buildCycleSnapshots({ subscriptionId, scheduledAt, scheduledInstant: Date.parse(scheduledAt) });
+      const line = { sku, quantity: qty, unitAmountMinor };
+      expect(snapshot).toMatchObject({ scheduledAt, templateSnapshot: { lines: [line] }, orderSnapshot: { lines: [line] },
+        pricingSnapshot: { currency: "XXX" } });
+      const claimed = await renewals.claimDue({ snapshot, workerId: "fixture-renewal", now: scheduledAt });
+      const stored = await operations();
+      expect(stored).toHaveLength(1);
+      const [operation] = stored;
+      expect(operation.id).toBe(claimed.operationId);
+      expect(operation.scheduled_at).toBe(bound.next_cycle_at);
+      expect(JSON.parse(operation.cycle_snapshot)).toMatchObject({ scheduledAt, templateSnapshot: { lines: [line] },
+        orderSnapshot: { lines: [line] }, pricingSnapshot: { currency: "XXX" } });
+    };
+    expect(await operations()).toEqual([]);
+    if (path === "frozen") await claim(quantity, 110);
+    const frozen = await operations();
+    const line = { variantId: skuId, quantity: newQuantity, unitPriceMinor: 210, currency: "XXX", isAddon: false, sortOrder: 0 };
+    const key = randomUUID();
+    if (path === "command") {
+      const commands = createPostgresSubscriptionCommandStore({ withTransaction });
+      const input = { actorId: buyer, clientId, subscriptionId, idempotencyKey: key, action: "resize_bundle", now: editNow,
+        payload: { expectedTemplateVersion: 1, cadenceDays: 28, coreLines, compositionConstraint: { kind: "units", value: newQuantity } } };
+      const preview = await commands.preview(input);
+      expect(preview).toMatchObject({ status: "previewed", canApply: true, lines: [line], newTotalMinor: newQuantity * 210 });
+      if (preview.status !== "previewed") throw new Error("Expected a native command quote");
+      expect(await commands.apply({ ...input, payload: { ...input.payload, acceptedQuoteHash: preview.quoteHash } }))
+        .toMatchObject({ status: "applied", templateVersion: 2 });
+    } else {
+      const preview = await asActor(buyer, db => val(db, "SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS value",
+        [subscriptionId, key, JSON.stringify(coreLines)]));
+      expect(preview).toMatchObject({ preview: { canApply: true, newTotal: money(newQuantity * 210) } });
+      expect(await asActor(buyer, db => val(db, "SELECT public.customer_subscription_apply_bundle_as_actor($1,$2,$3,$4) AS value",
+        [subscriptionId, key, preview.preview.quoteHash, JSON.stringify(coreLines)]))).toMatchObject({
+        subscriptionAction: { status: "applied", templateVersion: 2 },
+      });
+    }
+    expect(await subscription()).toEqual({ ...bound, template_version: 2 });
+    expect((await owner.query(`SELECT status,proposed_lines,currency_code,accepted_event_id FROM public.subscription_edit_quotes
+      WHERE subscription_id=$1`, [subscriptionId])).rows).toEqual([
+      { status: "accepted", proposed_lines: [line], currency_code: "XXX", accepted_event_id: expect.any(String) },
+    ]);
+    expect((await owner.query(`SELECT variant_id,quantity,sort_order,is_addon,unit_price_minor::int,currency_code
+      FROM public.subscription_lines WHERE subscription_id=$1`, [subscriptionId])).rows).toEqual([
+      { variant_id: skuId, quantity: newQuantity, sort_order: 0, is_addon: false, unit_price_minor: 210, currency_code: "XXX" },
+    ]);
+    expect((await owner.query(`SELECT line_ordinal,sku,quantity,unit_amount_minor::int,currency_code FROM public.subscription_renewal_term_lines
+      JOIN public.subscription_renewal_terms USING (subscription_id) WHERE subscription_id=$1`, [subscriptionId])).rows).toEqual([
+      { line_ordinal: 1, sku, quantity: newQuantity, unit_amount_minor: 210, currency_code: "XXX" },
+    ]);
+    expect(await operations()).toEqual(frozen);
+    if (path !== "frozen") await claim(newQuantity, 210);
+    expect(await subscription()).toEqual({ ...bound, template_version: 2 });
   } finally { await store.close(); }
 }, postgresSetupTimeoutMs);
 
@@ -817,8 +870,8 @@ it("passes readiness for a starter purchase strictly above the free-shipping thr
           line1:"1 Example Lane",city:"Example",postalCode:"00000",
           cart:{schemaVersion:1,configuration:config.id,mode:"one_time",cadenceDays:null,
             lines:[{sku:config.offer.products[0].sku,quantity:1}]}};
-        await call("offer.validate",submit);
-        const {orderRef} = await call("checkout.create",submit);
+        const reviewed = await call("offer.validate",submit);
+        const {orderRef} = await call("checkout.create",{...submit,expectedTotal:reviewed.expectedTotal});
         await call("payment.simulate",{orderRef,outcome:"captured"});
         process.stdout.write(orderRef);
       } finally { await bindings.close(); await accounts.close(); }
