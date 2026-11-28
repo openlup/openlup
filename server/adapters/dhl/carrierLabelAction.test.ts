@@ -72,6 +72,25 @@ describe("carrier label action", () => {
       body: expect.stringContaining("<shipmentId>TRK&lt;&amp;</shipmentId>"),
     }));
   });
+
+  it("rejects path-traversal object keys and redacts unexpected errors", async () => {
+    for (const unsafeKey of ["../secret.pdf", "tester-1/../other.pdf", "https://project.supabase.co/storage/v1/object/sign/bucket/..%2Fsecret.pdf"]) {
+      const fixture = labelFixture({ labelUrl: unsafeKey });
+      await expect(fixture.action(request()).then((response) => response.json())).resolves.toEqual({
+        error: expect.stringContaining("is not cached"),
+      });
+      expect(fixture.createSignedUrl).not.toHaveBeenCalled();
+    }
+
+    const failingAction = createCarrierLabelAction({
+      createClient: () => {
+        throw new Error("db failed Bearer tok_secret user@example.com +48 500 600 700");
+      },
+    });
+    const body = await failingAction(request()).then((response) => response.json());
+    expect(body.error).toBe("Error: db failed Bearer [redacted] [redacted-email] [redacted-phone]");
+    expect(body.error).not.toContain("tok_secret");
+  });
 });
 
 function labelFixture(input: {

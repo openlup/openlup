@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { disposition as orderDraftReceiptDisposition } from "./orderDraftReceiptsV2.fixture.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,7 +23,7 @@ import { createAccountMutationsTemplate, type AccountMutationsStore, type Accoun
 import { activation, allocate, defaultRule, utc } from "./nativeRenewalOccurrence.fixture.js";
 import { applyMeasuredOccurrencePrefix, args, committedAllocation, installMeasuredAccountPrefix, occurrence,
   occurrenceCatalogue, occurrenceForwardPath, original, paidRootFixture, rootFixture, sliceOccurrencePlan, writer,
-  writerPlan } from "./nativeRenewalOccurrenceWriter.fixture.js";
+} from "./nativeRenewalOccurrenceWriter.fixture.js";
 import { transaction } from "./orderMoneyV2Storage.fixture.js";
 import { call, type Db } from "./subscriptionNativeFixture.js";
 // A temporary scratch witness at aa98c60ba recorded this HTTP result through the
@@ -104,8 +105,8 @@ async function seed(db: AccountMutationsStore, uncarried?: true) {
     VALUES ($1,'shipping','Fixture Street','Fixture Town','00000')`, [subject.contactId]);
   await db.owner.query(`INSERT INTO public.identity_privacy_erasures
     (erasure_id,idempotency_key,client_id,actor_principal_id,contract_version,contributor_versions,dispositions,retained_obligations,completed_at)
-    VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,'[]','[]',now())`,
-  [erasureId, input.idempotencyKey, subject.contactId, actor.principalId, versions]);
+    VALUES ($1,$2,$3,$4,'identity.erasure.v1',$5,$6,'[]',now())`,
+  [erasureId, input.idempotencyKey, subject.contactId, actor.principalId, versions, JSON.stringify([orderDraftReceiptDisposition])]);
   if (uncarried) {
     // An installed nonempty relation outside connected capture's carried set.
     const ref = { key: "fixture:repeat", version: 1 };
@@ -546,6 +547,7 @@ it.each(profiles)("rehearses mounted cutover and rollback for $profile (uncarrie
 
 const occurrenceHelper = "public.subscriptions__read_renewal_occurrences_for_privacy(uuid,uuid)";
 const privacyForward = occurrenceForwardPath(occurrenceHelper);
+const beforePrivacy = sliceOccurrencePlan(occurrenceCatalogue, privacyForward, false);
 const privacyPlan = sliceOccurrencePlan(occurrenceCatalogue, privacyForward, true);
 const retention = { owner: "subscriptions", resource: "subscriptions.occurrence-evidence", disposition: "retain",
   reasonCode: "RENEWAL_OCCURRENCE_RETENTION", remote: false };
@@ -633,9 +635,14 @@ function checkProjection(exported: PrivacyExport, f: { subscriptionId: string; c
 let incumbentRuntime: Promise<Runtime> | undefined;
 function loadIncumbentRuntime() {
   return incumbentRuntime ??= (async () => {
-    // Build the writer-prefix application and its own workspace packages from the pinned source.
+    // Build the application and its workspace packages from the privacy predecessor's source revision.
+    const predecessor = beforePrivacy.forward.at(-1);
+    if (!predecessor) throw new Error("The privacy predecessor has no forward migration");
+    const revision = execFileSync("git", ["log", "--ignore-missing", "-1", "--format=%H", "HEAD", "MERGE_HEAD", "--", predecessor.file],
+      { encoding: "utf8" }).trim();
+    if (!revision) throw new Error(`Git history is missing the privacy predecessor ${predecessor.file}`);
     const directory = join(scratch, "incumbent");
-    const archive = execFileSync("git", ["archive", "--format=tar.gz", "66cce50968fc68659f22eac5768d2863d88a95bd"],
+    const archive = execFileSync("git", ["archive", "--format=tar.gz", revision],
       { maxBuffer: 128 * 1024 * 1024 });
     mkdirSync(directory);
     execFileSync("tar", ["-xzf", "-", "-C", directory], { input: archive, timeout: 60_000 });
@@ -661,8 +668,6 @@ async function incumbentMount(db: AccountMutationsStore, actor: Seed["actor"]) {
   return mounts(db, actor, host.composeNativePrivacy({ store: host.createPostgresPrivacyStore(), unitOfWork }).operations, host);
 }
 
-const beforeCarrier = sliceOccurrencePlan(occurrenceCatalogue, "db/platform/migrations/20261129130001_native_renewal_v3_storage.sql", false);
-
 async function persistedErasureEffects(db: Db, erasureId: string) {
   const { rows } = await db.query(`SELECT c.email LIKE 'erased+%@identity.invalid' AS redacted, c.first_name,
     r.retained_obligations, r.dispositions FROM public.identity_privacy_erasures r JOIN public.clients c ON c.id=r.client_id
@@ -673,7 +678,7 @@ async function persistedErasureEffects(db: Db, erasureId: string) {
 
 it("preserves pinned incumbent export and erase-only effects on both empty catalogues", async () => {
   const results: unknown[] = [];
-  for (const plan of [beforeCarrier, privacyPlan]) {
+  for (const plan of [beforePrivacy, privacyPlan]) {
     const db = await installMeasuredAccountPrefix(plan, "bootstrap", "privacy-incumbent");
     try {
       const actor = await privacyActor(db.owner), subject = await contact(db.owner);
@@ -716,8 +721,8 @@ async function checkPrivacyAcl(db: AccountMutationsStore) {
 }
 
 it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)(
-  "upgrades the measured writer prefix and retains scoped occurrence evidence on %s", async variant => {
-    const db = await installMeasuredAccountPrefix(writerPlan(), variant, "privacy-upgrade");
+  "upgrades the measured privacy predecessor and retains scoped occurrence evidence on %s", async variant => {
+    const db = await installMeasuredAccountPrefix(beforePrivacy, variant, "privacy-upgrade");
     try {
       const actor = await privacyActor(db.owner);
       const empty = await contact(db.owner, null, "Fixture");
@@ -778,7 +783,7 @@ it.each(["legacy", "legacy-with-service", "bootstrap", "separate", "admin-manage
       const candidateEmpty = await eraseThrough(mounted, "public", empty);
       await receiptRetention(db.owner, candidateEmpty, []);
       if (profile !== "legacy") {
-        const baseline = await installMeasuredAccountPrefix(beforeCarrier, profile, "privacy-before-occurrences");
+        const baseline = await installMeasuredAccountPrefix(beforePrivacy, profile, "privacy-before-reader");
         try {
           await baseline.owner.query("REVOKE EXECUTE ON FUNCTION public.customer_preferences_export(uuid) FROM service_role");
           const baselineEmpty = await eraseThrough(await incumbentMount(baseline, await privacyActor(baseline.owner)), "public",

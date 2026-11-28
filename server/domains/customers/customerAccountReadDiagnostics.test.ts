@@ -4,7 +4,7 @@ import {
   customerAccountReadFailureDetails,
   logCustomerAccountReadFailure,
   withCustomerAccountReadStage,
-} from "./customerAccountReadDiagnostics.js";
+} from "@openlup/platform/account-support";
 
 describe("customer account read diagnostics", () => {
   it("wraps account aggregate read failures with the failing stage", async () => {

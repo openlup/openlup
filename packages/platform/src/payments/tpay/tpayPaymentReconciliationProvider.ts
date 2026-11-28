@@ -23,6 +23,15 @@ export function createTpayPaymentReconciliationProvider(
       // display data, not a readback identifier.
       return input.providerSessionId;
     },
+    resolveReadbackId(snapshot) {
+      // Tpay's API transactionId is persisted in `providerSessionId`.
+      // `providerAttemptId` holds the display title (`TR-*`), not an API readback ID.
+      const sessionId = normalizeReadbackId(snapshot.providerSessionId);
+      if (sessionId) return sessionId;
+      const paymentId = normalizeReadbackId(snapshot.providerPaymentId);
+      if (paymentId && !isTpayDisplayTitle(paymentId)) return paymentId;
+      return null;
+    },
     async readRecoveryPayment(input) {
       const transaction = await client.getTransaction(input.providerPaymentId);
       const status = normalizeTpayTransaction(transaction);
@@ -47,6 +56,16 @@ export function createTpayPaymentReconciliationProvider(
       return status;
     },
   };
+}
+
+const TPAY_DISPLAY_TITLE_PATTERN = /^TR-/iu;
+
+function normalizeReadbackId(value: string | null | undefined): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isTpayDisplayTitle(value: string): boolean {
+  return TPAY_DISPLAY_TITLE_PATTERN.test(value);
 }
 
 function tpayMoneyMoved(transaction: Record<string, unknown>): boolean {

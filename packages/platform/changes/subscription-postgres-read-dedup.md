@@ -1,0 +1,1 @@
+- `@openlup/platform/subscriptions` eliminates redundant database reads in save-offer acceptance (`admitCommand` reuses prefetched `transaction_isolation` and `payment_blocker`) and provider renewal outcome observation (`observe` and `handoff` reuse prefetched operation rows, attempt records, and failure facts).

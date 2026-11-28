@@ -47,6 +47,7 @@ async function seed(store: Store) {
   await store.owner.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,quote_hash,
     expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
     VALUES($1,'fixture-quote',repeat('b',64),repeat('c',64),1,'[]',28,200,200,'XXX','2026-09-02')`, [f.subscription]);
+  return f.operation;
 }
 
 const profiles = ["bootstrap", "separate", "admin-managed", "admin-operator"] as const;
@@ -65,7 +66,7 @@ it.each(profiles)("upgrades a populated %s source before capturing and restores 
     const source = sourceResult.value;
     const target = targetResult.value;
     const earlierInventory = source.inventory;
-    await seed(source);
+    const operationId = await seed(source);
     const { applied } = await source.runner.apply();
     expect(applied).toContainEqual(expect.stringMatching(/_acquisition_definer_search_path_pin\.sql$/u));
     expect(applied).toContainEqual(expect.stringMatching(/_function_search_path_pg_temp\.sql$/u));
@@ -79,6 +80,8 @@ it.each(profiles)("upgrades a populated %s source before capturing and restores 
     const ledgerRows = packet.compatible.tables.find(entry => entry.table === ledger)?.rows;
     expect(ledgerRows).toEqual([expect.stringContaining('"recorded_at_ms": 9007199254740993')]);
     expect(packet.owned.find(entry => entry.table === "subscription_edit_quotes")?.rows).toHaveLength(1);
+    expect(packet.owned.find(entry => entry.table === "subscription_renewal_upgrade_cohort")?.rows)
+      .toEqual([expect.stringContaining(operationId)]);
 
     const freshTarget = await capture(target, "pristine-target", true);
     const input = { owner: target.migrator, installation: target.installation, packet, freshTarget };

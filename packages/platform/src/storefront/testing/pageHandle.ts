@@ -1,5 +1,6 @@
 import { storefrontAnchor } from "../index.js";
 import { anchorVisibility } from "./anchorVisibility.js";
+import { clientStorage } from "./clientStorage.js";
 import type { PageHandle } from "./contracts.js";
 
 type StructuralRequest = { method(): string; url(): string; headers(): Record<string, string>; redirectedFrom(): StructuralRequest | null };
@@ -10,9 +11,16 @@ type StructuralLocator = {
   isEnabled(options: { timeout: number }): Promise<boolean>;
   click(options: { timeout: number }): Promise<void>;
   fill(value: string, options: { timeout: number }): Promise<void>;
+  /** Commits a typed value as a buyer leaving the field does; a Playwright locator has it. */
+  blur?(options: { timeout: number }): Promise<void>;
   setChecked(checked: boolean, options: { timeout: number }): Promise<void>;
 };
 type RequestEvent = "request" | "requestfinished" | "requestfailed";
+/** The browser context members `clearClientState` uses; a Playwright context has both. */
+type StructuralContext = {
+  setStorageState?(state: { cookies: []; origins: [] }): Promise<void>;
+  clearCookies?(): Promise<void>;
+};
 
 /**
  * The page `createPageHandle` reads: the members of a Playwright page it uses,
@@ -29,6 +37,8 @@ type StructuralPage = {
   locator(selector: string): Pick<StructuralLocator, "evaluateAll"> & { first(): StructuralLocator };
   route(url: string, handler: (route: StructuralRoute) => Promise<void>): Promise<unknown>;
   unroute(url: string, handler: (route: StructuralRoute) => Promise<void>): Promise<unknown>;
+  /** Read only by `clearClientState`; a page without it cannot clear client state. */
+  context?(): StructuralContext;
 };
 
 type Target = Parameters<PageHandle["find"]>[0];
@@ -75,6 +85,8 @@ function pathOf(url: string): string {
   return new URL(url).pathname;
 }
 
+const isWebOrigin = (origin: string) => origin.startsWith("http://") || origin.startsWith("https://");
+
 /** Waits for the first match to be attached; `false` when none appeared in time. */
 async function appeared(locator: StructuralLocator, timeout: number): Promise<boolean> {
   try {
@@ -91,12 +103,25 @@ async function appeared(locator: StructuralLocator, timeout: number): Promise<bo
  * page today and reads only through the members it uses: `goto`, `reload`,
  * `url`, `viewportSize`, `waitForTimeout`, `on` and `off` (`request`,
  * `requestfinished`, `requestfailed`), `locator` with `first`, `waitFor`,
- * `evaluateAll`, `isEnabled`, `click`, `fill`, `setChecked`, and `route` and
+ * `evaluateAll`, `isEnabled`, `click`, `fill`, `blur` (when present, after
+ * typing), `setChecked`, and `route` and
  * `unroute` with `request()`, `continue()`, `fetch()` and `abort()`; a request
  * reads `method()`, `url()`, `headers()` and `redirectedFrom()`, so a redirect
  * hop, which the browser does not route, is claimed from its own `request`
  * event. `options.origin` resolves
  * relative paths for `navigate`; without it the page's own base URL does.
+ *
+ * `clearClientState` follows the table on `PageHandle`, the one statement of
+ * what it clears on each path and document. It reads `context()`
+ * (`setStorageState`, else `clearCookies`) and runs one self-contained
+ * function over the `:root` locator's `evaluateAll`. It reads the document's
+ * origin in the page first: when `options.origin` is given, a document on
+ * another `http:` or `https:` origin rejects
+ * `storefront_page_client_state_foreign_origin` before anything is cleared.
+ * Then `setStorageState({ cookies: [], origins: [] })`, or without it
+ * `clearCookies()` and a local-storage clear in the page; last, on the store's
+ * origin, session storage is cleared in the page. A page without `context`
+ * rejects `storefront_page_input_invalid`.
  *
  * `withhold` is `fetch()` then `abort()`: the request reaches the server, its
  * response is discarded and the page sees a failure. `block` is `abort()`. All
@@ -132,6 +157,29 @@ export function createPageHandle(page: StructuralPage, options: { readonly origi
   };
 
   return Object.freeze({
+    async clearClientState() {
+      const context = typeof page.context === "function" ? page.context() : undefined;
+      const setStorageState = context?.setStorageState?.bind(context);
+      const clearCookies = context?.clearCookies?.bind(context);
+      if (setStorageState === undefined && clearCookies === undefined) {
+        throw invalid("the page has no browser context; pass a Playwright page or a page whose context() offers setStorageState or clearCookies.");
+      }
+      // The store's origin as `options.origin` gives it; without it any web origin counts as the store's.
+      const storeOrigin = options.origin === undefined ? null : new URL(options.origin).origin;
+      // The root element reaches the document's own window; its origin decides what may be cleared.
+      const root = page.locator(":root");
+      const origin = await root.evaluateAll(clientStorage, []);
+      const web = isWebOrigin(origin);
+      if (web && storeOrigin !== null && origin !== storeOrigin) {
+        throw new Error(`storefront_page_client_state_foreign_origin: the page is on ${origin} while the store's origin is ${storeOrigin} (options.origin). `
+          + "Cause: session storage can be cleared only from a document of the store's origin, so the store's would stay for the next buyer. "
+          + "Fix: keep the page on the store's origin between runs, or start the run in a fresh browser context. Recheck: run the scenario again.");
+      }
+      if (setStorageState !== undefined) await setStorageState({ cookies: [], origins: [] });
+      else await clearCookies!();
+      const names = [...(setStorageState === undefined ? ["localStorage"] : []), ...(web ? ["sessionStorage"] : [])];
+      if (names.length > 0) await root.evaluateAll(clientStorage, names);
+    },
     async navigate(path: string) {
       await page.goto(options.origin === undefined ? path : new URL(path, options.origin).href);
     },
@@ -173,7 +221,11 @@ export function createPageHandle(page: StructuralPage, options: { readonly origi
       const first = page.locator(selectorOf(target)).first();
       if (!(await appeared(first, timeout))) return false;
       if (typeof value === "boolean") await first.setChecked(value, { timeout });
-      else await first.fill(value, { timeout });
+      else {
+        await first.fill(value, { timeout });
+        // Typing fires only `input`; leaving the field fires `change` and `blur`, which some pages quote on.
+        await first.blur?.({ timeout });
+      }
       return true;
     },
     async intercept(decide) {

@@ -22,7 +22,8 @@ import { z } from "zod";
  *   UI leaves to the buyer).
  * - The harness: `control_not_applied`, `arrange_failed`, `stimulus_not_create`,
  *   `stimulus_not_applied`, `tier_unreachable`, `page_failed`,
- *   `request_budget_exceeded`.
+ *   `request_budget_exceeded`, `client_state_unisolated` (the page handle
+ *   cannot clear client state between the clean and control runs).
  * - The outcome driver: `outcome_failed`.
  * - The observer: `observer_subject_unseen`, `observer_failed`.
  *
@@ -53,6 +54,7 @@ export type StorefrontFindingCode =
   | "observer_failed"
   | "page_failed"
   | "request_budget_exceeded"
+  | "client_state_unisolated"
   | (string & {});
 
 /**

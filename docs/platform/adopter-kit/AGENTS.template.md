@@ -38,6 +38,12 @@ monorepo instead, and this file does not apply there.
 - **Move every `@openlup/*` package together,** to the same version. Read each package's
   `CHANGELOG.md` `Migration:` blocks before you upgrade, and apply any SQL a package ships through
   your own migration chain.
+- **Analyze upgrades and verify parity with the installed CLI.** Before editing code during an
+  upgrade, run `npx --no -- openlup-context impact --from <previous-version> --format markdown`
+  (or `npx --no -- openlup upgrade impact --from <previous-version>`) and follow the bundled skill
+  at `node_modules/@openlup/core/skills/openlup-upgrade/SKILL.md`. After updating pins, run
+  `npx --no -- openlup-context doctor` (or `npx --no -- openlup doctor`) and refresh this managed
+  block with `npx --no -- openlup-context agents-sync` (or `npx --no -- openlup agents sync`).
 - **Run the readiness check before deploying,** once an installed package provides it. It names
   every unwired port, unhandled event or missing schema object.
 - **Compare actual bindings at first adoption and upgrade.** Include current producer/schema/

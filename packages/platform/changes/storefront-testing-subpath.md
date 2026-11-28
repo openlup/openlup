@@ -1,1 +1,0 @@
-- New `@openlup/platform/storefront/testing` (maturity `testing`, Node only): the storefront scenario, adapter, observer and page-handle contracts, `createPageHandle` over a Playwright page, and `serializeStorefrontVerdict`.

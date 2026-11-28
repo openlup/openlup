@@ -25,6 +25,13 @@ export interface CheckoutStorage {
 }
 export type CheckoutAct = (operation: Operation, input: ActionInput, commandKey: string, timeoutMs?: number) => Promise<ActionResult>;
 
+/**
+ * The starter's own marker on each sandbox simulate button; its value is the simulated payment outcome (`captured`,
+ * `refused`, `expired` or `indeterminate`). It lets the storefront proof kit find a sandbox control without copy text
+ * or page structure. It is not a storefront anchor, and the platform never reads it.
+ */
+export const sandboxOutcomeAttribute = 'data-starter-sandbox-outcome';
+
 /** The tab-storage name of the checkout record of one store configuration. */
 export const checkoutRecordKey = (configuration: string) => `neutral-store:checkout-continuation:v1:${configuration}`;
 const storageProbe = 'neutral-store:checkout-continuation:probe';

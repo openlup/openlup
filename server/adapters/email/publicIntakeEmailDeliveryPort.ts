@@ -13,7 +13,7 @@ import type {
   PublicIntakeDeliveryResult,
   PublicIntakePolicyDecision,
   PublicIntakeRecipientKind,
-} from "../../domains/communications/ports.js";
+} from "@openlup/platform/communications/contracts";
 
 export interface PublicIntakeEmailDeliveryClient {
   rpc?(name: string, params: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;

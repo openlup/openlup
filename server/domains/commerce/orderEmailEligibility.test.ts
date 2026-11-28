@@ -6,7 +6,7 @@ import {
   shouldSkipCheckoutExpired,
   shouldSkipOrderDraftConfirmation,
   shouldSkipPaymentFailedNotice,
-} from "./orderEmailEligibility.js";
+} from "@openlup/platform/commerce";
 
 describe("order email eligibility", () => {
   beforeEach(() => {

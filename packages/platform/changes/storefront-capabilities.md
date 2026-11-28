@@ -1,0 +1,1 @@
+- `@openlup/platform/lifecycle` adds `storefrontCapabilities` and `StorefrontCapability`: each capability a selling store may need, whether this version supports it, who closes it and which stores it affects.

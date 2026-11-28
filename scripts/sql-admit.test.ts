@@ -1035,3 +1035,54 @@ describe("PostgreSQL suite closures admission in queue and sql:admit", () => {
     expect(verdictLines(refusedResult.stdout)).toEqual(directVerdicts(f, base, refusedHead).verdicts);
   }, 30_000);
 });
+
+describe("transaction-aware SQL lock-safety in sql:admit and self-check", () => {
+  it("checks only newly appended forwards without retroactively failing historical hot-table migrations", () => {
+    const f = fixture();
+    const historicalPath = "supabase/migrations/20261120000000_historical_hot_index.sql";
+    const historicalSql = "CREATE INDEX idx_historical_orders ON public.commerce_orders (created_at);\n";
+    f.put(historicalPath, historicalSql);
+    const base = f.commit();
+
+    // Appending an unrelated expand-only forward must not retroactively fail the historical migration.
+    f.git("switch", "-q", "-c", "unrelated-forward");
+    f.put("supabase/migrations/20990101000000_unrelated.sql", "CREATE TABLE public.fixture_unrelated (id uuid);\n");
+    const unrelatedHead = f.commit();
+    const unrelatedResult = cli(f.root, ["--base", base, "--head", unrelatedHead, STALE]);
+    expect(unrelatedResult.stderr).toBe("");
+    expect(unrelatedResult.status).toBe(0);
+    expect(verdictLines(unrelatedResult.stdout)).toEqual(directVerdicts(f, base, unrelatedHead).verdicts);
+
+    // Appending a transaction-safe expand-only forward on a hot table passes sql:admit and self-check.
+    f.git("switch", "-q", "-c", "safe-hot-forward", base);
+    const safeHotSql = [
+      "SET LOCAL lock_timeout = '5s';",
+      "ALTER TABLE public.commerce_orders ADD COLUMN priority_band text NOT NULL DEFAULT 'standard';",
+      "ALTER TABLE public.commerce_orders ADD CONSTRAINT commerce_orders_priority_band_check CHECK (priority_band IN ('standard', 'urgent')) NOT VALID;",
+      "CREATE INDEX idx_commerce_orders_priority_urgent ON public.commerce_orders (priority_band) WHERE priority_band = 'urgent';",
+      "",
+    ].join("\n");
+    f.put("supabase/migrations/20990102000000_safe_hot.sql", safeHotSql);
+    const safeHead = f.commit();
+    const safeResult = cli(f.root, ["--base", base, "--head", safeHead, STALE]);
+    expect(safeResult.stderr).toBe("");
+    expect(safeResult.status).toBe(0);
+    expect(verdictLines(safeResult.stdout)).toEqual(directVerdicts(f, base, safeHead).verdicts);
+
+    // Appending an unsafe hot-table forward (ADD COLUMN NOT NULL without DEFAULT) is refused with an actionable hint.
+    f.git("switch", "-q", "-c", "unsafe-hot-forward", base);
+    const unsafeHotSql = [
+      "SET LOCAL lock_timeout = '5s';",
+      "ALTER TABLE public.subscriptions ADD COLUMN mandatory_tier text NOT NULL;",
+      "",
+    ].join("\n");
+    f.put("supabase/migrations/20990103000000_unsafe_hot.sql", unsafeHotSql);
+    const unsafeHead = f.commit();
+    const unsafeResult = cli(f.root, ["--base", base, "--head", unsafeHead, STALE]);
+    expect(unsafeResult.stderr).toBe("");
+    expect(unsafeResult.status).toBe(1);
+    expect(unsafeResult.stdout).toContain("lock-safety: ALTER TABLE public.subscriptions ADD COLUMN mandatory_tier NOT NULL without DEFAULT");
+    expect(unsafeResult.stdout).toContain("capability needed: bound hot-table DDL with SET LOCAL lock_timeout");
+    expect(verdictLines(unsafeResult.stdout)).toEqual(directVerdicts(f, base, unsafeHead).verdicts);
+  }, 45_000);
+});

@@ -8,6 +8,7 @@ import {
 } from "@openlup/platform/portability";
 import { connectedStoreOutsideProfileRelations, connectedStoreOwnedTables as owned,
   type ConnectedStoreOutsideProfileDisposition } from "./connectedStoreDomains/index.js";
+import { renewalUpgradeCohort, tablesForRenewalUpgradeCohort } from "./connectedStoreDomains/subscriptions.js";
 
 const { catalogPublicationAdmissionRefusal, assertPublishedSkuIdentity, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
@@ -113,12 +114,16 @@ export async function captureConnectedNativeStore(input: {
     return await source.withSnapshot(async db => {
       const facts = (await db.query<{
         readonly: string; isolation: string; cluster: string; database: string; login: string; snapshot: string;
+        renewal_cohort_installed: boolean;
       }>(`SELECT pg_catalog.current_setting('transaction_read_only') AS readonly,
         pg_catalog.current_setting('transaction_isolation') AS isolation,
         ${connectedStoreClusterIdentitySql} AS cluster,
         pg_catalog.current_database() AS database, session_user::pg_catalog.text AS login,
-        pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot`)).rows[0];
+        pg_catalog.txid_current_snapshot()::pg_catalog.text AS snapshot,
+        EXISTS (SELECT 1 FROM public.platform_schema_migrations WHERE catalog_path ~ $1) AS renewal_cohort_installed`,
+      [renewalUpgradeCohort.forward.source])).rows[0];
       if (facts?.readonly !== "on" || facts.isolation !== "repeatable read") throw new PostgresTransferError("invalid_input");
+      const ownedTables = tablesForRenewalUpgradeCohort(owned, facts.renewal_cohort_installed);
       // A login that row security would filter must fail here, not read an empty source.
       await db.query("SET LOCAL row_security = off");
       await db.query("SET LOCAL TimeZone = 'UTC'");
@@ -148,7 +153,9 @@ export async function captureConnectedNativeStore(input: {
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
         WHERE pg_catalog.left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
         AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
-      const allowed = new Set<string>([...compatible, ...owned]);
+      const cohortPresent = relations.some(relation => relation.schema === "public" && relation.table === renewalUpgradeCohort.table);
+      if (cohortPresent !== facts.renewal_cohort_installed) throw new PostgresTransferError("schema_conflict", renewalUpgradeCohort.table);
+      const allowed = new Set<string>([...compatible, ...ownedTables]);
       const emptyOutsideProfile: string[] = [];
       const outsideProfileCensus: ConnectedNativeStoreCapture["outsideProfileCensus"] = [];
       for (const relation of relations) {
@@ -175,14 +182,14 @@ export async function captureConnectedNativeStore(input: {
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
         LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
         WHERE n.nspname='public' AND c.relname=ANY($1::pg_catalog.text[])
-        ORDER BY c.relname,a.attnum`, [owned]);
+        ORDER BY c.relname,a.attnum`, [ownedTables]);
       for (const row of attributeRows) {
         const columns = columnsByTable.get(row.table) ?? [];
         if (row.name !== null && row.type !== null) columns.push({ name: row.name, type: row.type });
         columnsByTable.set(row.table, columns);
       }
       const tables: ConnectedStoreOwnedRows[] = [];
-      for (const table of owned) {
+      for (const table of ownedTables) {
         const columns = columnsByTable.get(table);
         // Preserve the redacted failure from the previous regclass lookup.
         if (!columns) throw new PostgresTransferError("database_unavailable");

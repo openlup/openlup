@@ -1,1 +1,0 @@
-Added `@openlup/platform/adapter-kit` (`experimental` rail) exporting shared zero-dependency provider adapter primitives: `createHardenedFetch`, `createOAuth2TokenManager`, `parseRetryAfter`, `createRetryAfterCooldown`, `verifyHmacSha256`, `verifyHardenedStandardWebhook`, and `verifyEd25519Signature`.

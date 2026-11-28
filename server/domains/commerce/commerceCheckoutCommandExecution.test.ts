@@ -10,7 +10,7 @@ import {
 import { PAYMENT_EXECUTION_PROVIDERS } from "../../../src/domains/payment/types.js";
 import { ProviderAttemptInFlightError } from "../../shared/preparedProviderAttempt.js";
 import { createCommerceRuntimeService } from "./commerceRuntimeService.js";
-import { checkoutCommandJourney } from "./commerceCheckoutCommandExecution.js";
+import { checkoutCommandJourney } from "@openlup/platform/commerce/server";
 import { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
 import { createPorts, createResponse, intent, request } from "./commerceCheckoutHandler.testFixtures.js";
 import { makeInventoryPort, makeOrderPort, makePaymentPort, makeReadinessPort, orderDraftSummary } from "./commerceRuntimeService.fixtures.js";
@@ -21,13 +21,19 @@ import { createSupabaseCommerceOrderDraftPort } from "../../adapters/supabase/co
 // implementation still runs for every case below; the spy only records who
 // entered it, which is what proves there is no second saga.
 const orchestration = vi.hoisted(() => ({ entries: vi.fn() }));
-vi.mock("./commercePaidOrderOrchestration.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./commercePaidOrderOrchestration.js")>();
+vi.mock("@openlup/platform/commerce/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@openlup/platform/commerce/server")>();
   return {
     ...actual,
-    orchestrateCheckoutJourney: (...args: Parameters<typeof actual.orchestrateCheckoutJourney>) => {
-      orchestration.entries(...args);
-      return actual.orchestrateCheckoutJourney(...args);
+    createPaidOrderOrchestration: (...factoryArgs: Parameters<typeof actual.createPaidOrderOrchestration>) => {
+      const created = actual.createPaidOrderOrchestration(...factoryArgs);
+      return {
+        ...created,
+        orchestrateCheckoutJourney: (...args: Parameters<typeof created.orchestrateCheckoutJourney>) => {
+          orchestration.entries(...args);
+          return created.orchestrateCheckoutJourney(...args);
+        },
+      };
     },
   };
 });

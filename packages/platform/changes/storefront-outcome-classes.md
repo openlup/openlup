@@ -1,1 +1,0 @@
-- `SubmitOutcomeClass` in `@openlup/platform/storefront` gains `declined`, a definitive decline of the payment attempt that leaves the purchase payable, and `closed`, the server's statement that the purchase under the key is terminal and no payment under it can still settle; a classifier written earlier never returns either.

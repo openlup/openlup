@@ -108,18 +108,33 @@ const paymentBlockerSql = (subscription: "$1::uuid" | "s.id") => `COALESCE(
   (SELECT 'payment_failed' FROM public.subscription_cycles c WHERE c.subscription_id=${subscription}
     AND c.status IN ('payment_failed','retry_scheduled') LIMIT 1))`;
 
-async function admitCommand(executor: SubscriptionQueryExecutor, admit: SubscriptionCommandAdmission, input: NativeSubscriptionCommand, status: string) {
-  const { rows: [row] } = await executor.query(`SELECT current_setting('transaction_isolation') AS isolation,
-    ${paymentBlockerSql("$1::uuid")} AS payment_blocker`, [input.subscriptionId]);
+async function admitCommand(
+  executor: SubscriptionQueryExecutor,
+  admit: SubscriptionCommandAdmission,
+  input: NativeSubscriptionCommand,
+  status: string,
+  prefetched?: { isolation: unknown; paymentBlocker: unknown },
+) {
+  let isolation: unknown;
+  let paymentBlocker: unknown;
+  if (prefetched) {
+    isolation = prefetched.isolation;
+    paymentBlocker = prefetched.paymentBlocker;
+  } else {
+    const { rows: [row] } = await executor.query(`SELECT current_setting('transaction_isolation') AS isolation,
+      ${paymentBlockerSql("$1::uuid")} AS payment_blocker`, [input.subscriptionId]);
+    isolation = row.isolation;
+    paymentBlocker = row.payment_blocker;
+  }
   // Higher isolation retains a pre-lock transaction snapshot. PostgreSQL's
   // READ UNCOMMITTED uses READ COMMITTED's statement snapshots as well.
-  if (row.isolation !== "read committed" && row.isolation !== "read uncommitted") {
+  if (isolation !== "read committed" && isolation !== "read uncommitted") {
     throw new Error("subscription_command_admission_isolation_unsupported");
   }
   await admit({ action: admissionAction(input.action),
     pausePreset: typeof input.payload.pausePreset === "string" ? input.payload.pausePreset : null,
     reason: typeof input.payload.reason === "string" ? input.payload.reason : null,
-    subscriptionStatus: status, paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
+    subscriptionStatus: status, paymentBlocker: paymentBlocker == null ? null : String(paymentBlocker) });
 }
 
 /** N2 owns normalization, locking, quote acceptance, receipts and all writes.
@@ -499,7 +514,12 @@ export function createPostgresSubscriptionSaveOfferAcceptor(binding: OfferBindin
 
         const terms = lifecycleTerms(settings.lifecycleTerms);
         const native = offerCommand({ actor, subscriptionId, now, idempotencyKey: key }, request);
-        if (binding.admitSubscriptionCommand) await admitCommand(db, binding.admitSubscriptionCommand, native, String(owned.status));
+        if (binding.admitSubscriptionCommand) {
+          await admitCommand(db, binding.admitSubscriptionCommand, native, String(owned.status), {
+            isolation: owned.isolation,
+            paymentBlocker: row.payment_blocker,
+          });
+        }
         // Direct N2 apply gives semantic no-ops the native payment fences too.
         const result = await dispatchCommand(db, commandValues(native), false, terms);
         const { rows: [receipt] } = await db.query(`UPDATE public.subscription_command_receipts

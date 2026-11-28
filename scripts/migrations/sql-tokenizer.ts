@@ -487,6 +487,8 @@ export function expandOnlyPlatformForward(sql: string, reviewedCreationTable: bo
       } else if (quoted.includes("[") || quoted.includes("]")) return false;
     }
     // Base admission remains unchanged; the expand-only checks above only add refusals.
+    // Transaction-safe lock_timeout bounds are allowed on expand-only forwards.
+    if (!reviewedCreationTable && /^SET (?:LOCAL )?LOCK_TIMEOUT (?:=|TO) <literal>$/u.test(quoted.join(" "))) return true;
     // Pinned new tables use scalar operators/casts and these foreign-key actions.
     // Mask only those actions, leaving standalone DELETE/SET and every other refusal intact.
     const checked = (reviewedCreationTable || newTableForeignKeyActions) && /^CREATE TABLE /u.test(text) ? text.replace(successors ? / ON DELETE RESTRICT(?= |$)/gu : / ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : statement;

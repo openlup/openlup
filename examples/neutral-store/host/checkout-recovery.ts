@@ -2,6 +2,7 @@ import type { Locale } from '../shared/locales.ts';
 import { createPrivateCapture } from './private-capture.ts';
 import type { PostgresCheckoutRecoveryTokenPort } from '@openlup/platform/commerce/server';
 import type { ActionContext } from './bindings.ts';
+import type { ActionInput, ActionResult } from '../shared/api.ts';
 import { routes } from '../shared/routes.ts';
 
 export interface CheckoutRecoveryMessage {
@@ -126,11 +127,11 @@ export function recreatedExecutionForInspection(order: NativeCheckoutRecoveryOrd
 export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTransactionLane, 'run'>, tokens: PurchaseRecovery['tokens'], keyring?: PromotionAcceptanceKeyring): ApplicationBindings['actions'] {
   const reader = createPostgresCheckoutRecoveryOrderPort(pool);
   const activation = createInitialPurchaseActivation(pool);
-  return { 'checkout.recovery': async (payload, context) => {
-    const refuse = (reason: string) => ({ ok: false as const, code: `starter_recovery_${reason}` });
-    if (Object.keys(payload).some(key => !['locale','token','action','orderRef','attemptRef','outcome'].includes(key))
-      || typeof payload.token !== 'string' || !/^rcv_(?:[A-Za-z0-9_-]{43}|[a-f0-9]{64})$/.test(payload.token)
-      || !['inspect','pay','simulate'].includes(String(payload.action))) return refuse('unavailable');
+  const refuse = (reason: string) => ({ ok: false as const, code: `starter_recovery_${reason}` });
+  /** The one owner of every recovery action; `checkout.recovery` names the action in its body, `checkout.recoverySimulate` is the simulate. */
+  const recovery = async (payload: ActionInput, context: ActionContext, action: 'inspect' | 'pay' | 'simulate'): Promise<ActionResult> => {
+    if (Object.keys(payload).some(key => !['locale','token','orderRef','attemptRef','outcome'].includes(key))
+      || typeof payload.token !== 'string' || !/^rcv_(?:[A-Za-z0-9_-]{43}|[a-f0-9]{64})$/.test(payload.token)) return refuse('unavailable');
     const predecessors = installedAcquisitionPredecessors();
     const service = createExpiredCheckoutRecoveryService({
       supports: supportsRecovery,
@@ -176,13 +177,13 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
     if (!latestDraft) return refuse('unavailable');
     const lineage = { originalOrderRef: original.orderId, latestOrderRef: latest.orderId };
     // Native initial activation attaches a paid first cycle. Its authoritative paid presentation is distinct from renewal mutation admission.
-    if (payload.action === 'inspect' && latest.paymentIntentStatus === 'succeeded'
+    if (action === 'inspect' && latest.paymentIntentStatus === 'succeeded'
       && ['paid','fulfillment_pending','fulfilled'].includes(latest.status)
       && await isInitialCheckoutOrder(pool, original.orderId) && await isInitialCheckoutOrder(pool, latest.orderId))
       return { ok: true, value: { ...lineage, recoverable: false, terminalStatus: 'paid' } };
     if (original.subscriptionCycleId !== null || latest.subscriptionCycleId !== null) return refuse('unavailable');
     if (latestDraft.governed && latest.technicallyExpired
-      && (latest.status === 'expired' || latest.status === 'cancelled') && payload.action !== 'simulate') {
+      && (latest.status === 'expired' || latest.status === 'cancelled') && action !== 'simulate') {
       return governedCheckoutRefusal;
     }
     const simulator = createPostgresSandboxPaymentSimulator(pool, context.config.purchase.sandbox);
@@ -197,13 +198,13 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
       validation: { validate: async order => sameUuid(order.orderId, latest.orderId) && latestDraft.quote_matches && service.validate(order) },
       recoveryWindowMs: checkoutLinkPolicy.recoveryWindowMs,
       clientHasLiveOrPendingSubscription: ({ clientId }) => subscriptionHost.clientHasLiveOrPendingSubscription(clientId) });
-    if (payload.action === 'inspect') {
+    if (action === 'inspect') {
       const result = await inspection.inspect({ token: payload.token, capabilities: ['recreate_expired_order'] });
       const recreatedExecution = recreatedExecutionForInspection(latest, executionAttempt, result);
       return { ok: true, value: { ...result, ...lineage, ...(recreatedExecution ? { recreatedExecution } : {}) } };
     }
     try {
-      if (payload.action === 'pay') {
+      if (action === 'pay') {
         if (latest.status === 'paid' || activeAttempt?.state === 'captured') return refuse('paid');
         // A dispatched replacement replays its exact receipt, never another attempt or the source's continuation.
         if (latest.status === 'pending_payment' && latest.recreatedFromOrderId) {
@@ -239,13 +240,22 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
       }
       return { ok: true, value: { ...lineage, state: outcome } };
     } catch (error) {
-      if (payload.action === 'simulate') return refuse('unavailable');
+      if (action === 'simulate') return refuse('unavailable');
       const admission = catalogAdmissionRefusal(error);
       if (admission) return admission === governedCheckoutRefusal.code ? governedCheckoutRefusal : { ok: false as const, code: admission };
       if (error instanceof ExpiredCheckoutRecoveryError) return refuse(error.reason);
       throw error;
     }
-  } };
+  };
+  return {
+    'checkout.recovery': async (payload, context) => {
+      const { action, ...rest } = payload;
+      if (action !== 'inspect' && action !== 'pay' && action !== 'simulate') return refuse('unavailable');
+      return recovery(rest, context, action);
+    },
+    // The sandbox simulate has its own operation, so every `checkout.recovery` request is a read or a payment.
+    'checkout.recoverySimulate': async (payload, context) => recovery(payload, context, 'simulate'),
+  };
 }
 
 /** Optional exact-order guidance. Absence or failure preserves the ordinary reader. */
@@ -298,6 +308,60 @@ export function composeSandboxRecoveryPayments(pool: Pool, lane: Pick<PostgresRo
   const fields = (payload: Record<string,unknown>, allowed: string[]) => Object.keys(payload).every(key => key === 'locale' || allowed.includes(key));
   const method = (value: unknown): value is DemoMethod => sandboxRecoveryPolicy.methodKeys.some(key => key === value);
   const hold = { readHolds: async () => [], classify: (_input: unknown) => null, offeredMethods: (_kind: string) => new Set<string>() };
+  /** The one owner of the payment-attempt read and its sandbox simulate. */
+  const payment = async (payload: ActionInput, context: ActionContext, action: 'inspect' | 'simulate'): Promise<ActionResult> => {
+    if (!fields(payload,['orderRef','token','attemptRef','outcome']) || !isUuid(payload.orderRef)) return refused('starter_input_invalid');
+    const claims = codec?.verifyCookieHeader(context.requestCookie);
+    const bound = claims?.orderId === payload.orderRef ? claims : null;
+    const inspected = typeof payload.token === 'string' ? await tokens.inspect(payload.token) : null;
+    const bearer = inspected && classifyCheckoutRecoveryTokenState(inspected.tokenState) === 'continuation' ? inspected : null;
+    if (!bound && !bearer) return refused('starter_continuation_required');
+    try {
+      const order = await reader.getRecoveryOrder({ orderId: payload.orderRef });
+      if (!order || order.subscriptionCycleId !== null || !order.paymentIntentId
+        || order.clientId !== (bound?.clientId ?? bearer?.clientId)) return refused();
+      const latest = bearer ? await reader.getLatestRecoveryOrder!({orderId:bearer.orderId}) : null;
+      const original = bearer ? await reader.getRecoveryOrder({orderId:bearer.orderId}) : null;
+      const tokenBound = !!bearer && !!original && original.subscriptionCycleId === null && original.clientId === order.clientId
+        && latest?.orderId === order.orderId && latest.clientId === order.clientId;
+      if (!bound && !tokenBound) return refused();
+      const simulator = createPostgresSandboxPaymentSimulator(pool,context.config.purchase.sandbox);
+      const attempt = await simulator.readAttempt({ settlementIntentId: order.paymentIntentId });
+      if (!tokenBound && (!bound || bound.paymentIntentId !== attempt?.settlementIntentId || bound.paymentAttemptId !== attempt?.id)) return refused('starter_continuation_required');
+      if (action === 'inspect') {
+        const recovery = await readAuthorizedPaymentRecovery({ request: { orderId: order.orderId, clientId: order.clientId,
+          paymentIntentId: order.paymentIntentId, ...(bound ? { journeyId: bound.journeyId } : {}) }, claims: bound,
+          authorization: bearer ? `Bearer ${String(payload.token)}` : undefined,
+          deps: { tokenPort: tokens, port: createPostgresPaymentRecoveryGuidancePort(pool,normalizeSandboxPaymentRecoveryEvidence) } });
+        const paymentBlocked = order.status !== 'pending_payment' || order.technicallyExpired || attempt?.state === 'captured'
+          || attempt?.latestObservation?.outcome === 'captured' || recovery?.snapshot.observedSuccess === true;
+        const current = !paymentBlocked && !!attempt && bound?.paymentAttemptId === attempt.id && bound.paymentIntentId === attempt.settlementIntentId;
+        const key = attempt ? sandboxRecoveryMethod(attempt.methodFacts) : null;
+        return { ok: true, value: { orderRef: order.orderId, attemptRef: attempt?.id ?? null, state: attempt?.state ?? null,
+          paymentBlocked, canTokenPay: !paymentBlocked && tokenBound, continuationAvailable: current, methodKey: key, canInlineRetry: current && !!key && attempt?.state === 'refused'
+            && !!recovery?.guidance && recovery.guidance.actions.some(step => ['change_instrument','correct_data','change_method'].includes(step)),
+          ...(recovery?.guidance ? { recoveryGuidance: recovery.guidance } : {}) } };
+      }
+      if (!attempt || !sameUuid(payload.attemptRef,attempt.id) || order.status !== 'pending_payment' || order.technicallyExpired
+        || attempt.state === 'captured' || attempt.latestObservation?.outcome === 'captured'
+        || !['captured','refused','expired','indeterminate'].includes(String(payload.outcome))) return refused();
+      const outcome = payload.outcome as 'captured'|'refused'|'expired'|'indeterminate';
+      const acceptedQuote = order.quoteSnapshot as CreateQuoteResponse;
+      // Validate the retained renewal binding before payment truth can become paid.
+      if (outcome === 'captured') activation.assertCaptureAvailable(acceptedQuote);
+      const observation = await simulator.recordObservation({ attemptId: attempt.id, idempotencyKey: `starter-execution:${attempt.id}:${outcome}`,
+        outcome, occurredAt: attempt.dispatchedAt });
+      const accepted = await simulator.ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({ settlementIntentId: order.paymentIntentId,
+        attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
+      if (accepted.status !== 200) return refused();
+      if (outcome === 'captured' && order.mode === 'subscription_cycle') {
+        await activation.activate({ editWindowHours: context.config.subscriptionCreation.editWindowHours, orderId: order.orderId, acceptedQuote, currency: order.currency,
+          capturedReference: order.paymentIntentId, methodFacts: attempt.methodFacts,
+          stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
+      }
+      return { ok: true, value: { orderRef: order.orderId, attemptRef: attempt.id, state: outcome } };
+    } catch { return refused(); }
+  };
   return {
     'checkout.tokenPay': async (payload, context) => {
       if (!fields(payload,['token','methodKey','executionRail']) || typeof payload.token !== 'string' || !method(payload.methodKey)) return refused('starter_input_invalid');
@@ -337,59 +401,12 @@ export function composeSandboxRecoveryPayments(pool: Pool, lane: Pick<PostgresRo
       } catch (error) { return paymentFailure(error); }
     },
     'checkout.payment': async (payload, context) => {
-      if (!fields(payload,['action','orderRef','token','attemptRef','outcome']) || !isUuid(payload.orderRef)
-        || !['inspect','simulate'].includes(String(payload.action))) return refused('starter_input_invalid');
-      const claims = codec?.verifyCookieHeader(context.requestCookie);
-      const bound = claims?.orderId === payload.orderRef ? claims : null;
-      const inspected = typeof payload.token === 'string' ? await tokens.inspect(payload.token) : null;
-      const bearer = inspected && classifyCheckoutRecoveryTokenState(inspected.tokenState) === 'continuation' ? inspected : null;
-      if (!bound && !bearer) return refused('starter_continuation_required');
-      try {
-        const order = await reader.getRecoveryOrder({ orderId: payload.orderRef });
-        if (!order || order.subscriptionCycleId !== null || !order.paymentIntentId
-          || order.clientId !== (bound?.clientId ?? bearer?.clientId)) return refused();
-        const latest = bearer ? await reader.getLatestRecoveryOrder!({orderId:bearer.orderId}) : null;
-        const original = bearer ? await reader.getRecoveryOrder({orderId:bearer.orderId}) : null;
-        const tokenBound = !!bearer && !!original && original.subscriptionCycleId === null && original.clientId === order.clientId
-          && latest?.orderId === order.orderId && latest.clientId === order.clientId;
-        if (!bound && !tokenBound) return refused();
-        const simulator = createPostgresSandboxPaymentSimulator(pool,context.config.purchase.sandbox);
-        const attempt = await simulator.readAttempt({ settlementIntentId: order.paymentIntentId });
-        if (!tokenBound && (!bound || bound.paymentIntentId !== attempt?.settlementIntentId || bound.paymentAttemptId !== attempt?.id)) return refused('starter_continuation_required');
-        if (payload.action === 'inspect') {
-          const recovery = await readAuthorizedPaymentRecovery({ request: { orderId: order.orderId, clientId: order.clientId,
-            paymentIntentId: order.paymentIntentId, ...(bound ? { journeyId: bound.journeyId } : {}) }, claims: bound,
-            authorization: bearer ? `Bearer ${String(payload.token)}` : undefined,
-            deps: { tokenPort: tokens, port: createPostgresPaymentRecoveryGuidancePort(pool,normalizeSandboxPaymentRecoveryEvidence) } });
-          const paymentBlocked = order.status !== 'pending_payment' || order.technicallyExpired || attempt?.state === 'captured'
-            || attempt?.latestObservation?.outcome === 'captured' || recovery?.snapshot.observedSuccess === true;
-          const current = !paymentBlocked && !!attempt && bound?.paymentAttemptId === attempt.id && bound.paymentIntentId === attempt.settlementIntentId;
-          const key = attempt ? sandboxRecoveryMethod(attempt.methodFacts) : null;
-          return { ok: true, value: { orderRef: order.orderId, attemptRef: attempt?.id ?? null, state: attempt?.state ?? null,
-            paymentBlocked, canTokenPay: !paymentBlocked && tokenBound, continuationAvailable: current, methodKey: key, canInlineRetry: current && !!key && attempt?.state === 'refused'
-              && !!recovery?.guidance && recovery.guidance.actions.some(action => ['change_instrument','correct_data','change_method'].includes(action)),
-            ...(recovery?.guidance ? { recoveryGuidance: recovery.guidance } : {}) } };
-        }
-        if (!attempt || !sameUuid(payload.attemptRef,attempt.id) || order.status !== 'pending_payment' || order.technicallyExpired
-          || attempt.state === 'captured' || attempt.latestObservation?.outcome === 'captured'
-          || !['captured','refused','expired','indeterminate'].includes(String(payload.outcome))) return refused();
-        const outcome = payload.outcome as 'captured'|'refused'|'expired'|'indeterminate';
-        const acceptedQuote = order.quoteSnapshot as CreateQuoteResponse;
-        // Validate the retained renewal binding before payment truth can become paid.
-        if (outcome === 'captured') activation.assertCaptureAvailable(acceptedQuote);
-        const observation = await simulator.recordObservation({ attemptId: attempt.id, idempotencyKey: `starter-execution:${attempt.id}:${outcome}`,
-          outcome, occurredAt: attempt.dispatchedAt });
-        const accepted = await simulator.ingress.receive({ rawBody: new TextEncoder().encode(JSON.stringify({ settlementIntentId: order.paymentIntentId,
-          attemptId: attempt.id, observationId: observation.id })), headers: {}, receivedAt: attempt.dispatchedAt });
-        if (accepted.status !== 200) return refused();
-        if (outcome === 'captured' && order.mode === 'subscription_cycle') {
-          await activation.activate({ editWindowHours: context.config.subscriptionCreation.editWindowHours, orderId: order.orderId, acceptedQuote, currency: order.currency,
-            capturedReference: order.paymentIntentId, methodFacts: attempt.methodFacts,
-            stockSourceKey: `starter-demo:${context.config.id}`, templateId: `starter:${context.config.id}` });
-        }
-        return { ok: true, value: { orderRef: order.orderId, attemptRef: attempt.id, state: outcome } };
-      } catch { return refused(); }
+      const { action, ...rest } = payload;
+      if (action !== 'inspect' && action !== 'simulate') return refused('starter_input_invalid');
+      return payment(rest, context, action);
     },
+    // The sandbox simulate has its own operation, so every `checkout.payment` request is a read.
+    'checkout.paymentSimulate': async (payload, context) => payment(payload, context, 'simulate'),
     'checkout.paymentLink': async (payload, context) => {
       if (!fields(payload,[])) return refused('starter_input_invalid');
       const response = { result: refused() as Awaited<ReturnType<NonNullable<ApplicationBindings['actions']['checkout.paymentLink']>>> };

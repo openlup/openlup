@@ -1,1 +1,0 @@
-Native migration admission recognizes a later guarded checkout-owner EXECUTE grant for three issued catalogue routines. Both qualified PostgreSQL installers validate the host login and project its routine grants after the guarded unit commits.

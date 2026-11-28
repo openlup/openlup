@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "configurations": ["supplements"],
+  "widths": [1280],
+  "routes": {
+    "surfaces": {
+      "product": "/products",
+      "cart": "/cart",
+      "checkout": "/checkout",
+      "account": "/account"
+    },
+    "selectionEntry": {
+      "one_time": "/cart?mode=one_time&line=ASTER-DAWN-60%3A1",
+      "subscription": "/cart?mode=subscription&line=ASTER-DAWN-60%3A1"
+    }
+  },
+  "changedPayloadPolicy": "refuse_changed",
+  "autoProgress": [],
+  "recheck": "npm run proof:postgres -- --scenario {scenario}"
+}

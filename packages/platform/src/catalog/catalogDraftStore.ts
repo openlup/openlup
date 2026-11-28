@@ -113,13 +113,41 @@ export function createPostgresCatalogDraftStoreV4(client: PgQueryExecutor): Cata
     ...store,
     async list(query, actorId) {
       const page = await store.list(query, actorId);
-      const items = await Promise.all(page.items.map(async summary => {
-        const record = await store.get({ draftId: summary.draftId, revision: summary.revision }, actorId);
+      if (!page.items.length) return { ...page, items: [] };
+      let rows: Record<string, unknown>[];
+      try {
+        ({ rows } = await client.query(
+          `SELECT d.ord::int AS ord, public.catalog_draft_get(d.draft_id, d.revision, $3::text) AS result
+           FROM unnest($1::uuid[], $2::integer[]) WITH ORDINALITY AS d(draft_id, revision, ord)
+           ORDER BY d.ord`,
+          [
+            page.items.map(summary => summary.draftId),
+            page.items.map(summary => summary.revision),
+            null,
+          ],
+        ));
+      } catch (error) {
+        if (error instanceof CatalogDraftStoreError) throw error;
+        throw new CatalogDraftStoreError(refusal(error));
+      }
+      if (rows.length !== page.items.length) {
+        throw new CatalogDraftStoreError({ outcome: "dependency_unavailable", reason: "invalid_store_response" });
+      }
+      const items = page.items.map((summary, index) => {
+        const row = rows[index];
+        if (!row || !("result" in row) || row.ord !== index + 1) {
+          throw new CatalogDraftStoreError({ outcome: "dependency_unavailable", reason: "invalid_store_response" });
+        }
+        const parsed = lifecycleStoredRecordSchema.nullable().safeParse(row.result);
+        if (!parsed.success) {
+          throw new CatalogDraftStoreError({ outcome: "dependency_unavailable", reason: "invalid_store_response" });
+        }
+        const record = parsed.data;
         if (!record || record.draftId !== summary.draftId || record.revision !== summary.revision
           || record.fingerprint !== summary.fingerprint)
           throw new CatalogDraftStoreError({ outcome: "dependency_unavailable", reason: "invalid_store_response" });
         return record;
-      }));
+      });
       return { ...page, items };
     },
   };

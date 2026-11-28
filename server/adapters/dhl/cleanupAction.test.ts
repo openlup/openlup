@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  CARRIER_DISPLAY_NAME,
   CLEANUP_URL,
   createCleanupAction,
   escapeXml,
@@ -155,6 +156,82 @@ describe("cleanup action", () => {
     await expect(action(request({ authorization: "Bearer token" })).then((response) => response.json()))
       .resolves.toEqual(cleanupBody({ providerError: "Error: client unavailable" }));
   });
+
+  it("passes manual redirect and AbortSignal, handles non-OK HTTP, and keeps timeout or oversized responses proceedable", async () => {
+    const redirectFixture = cleanupFixture({ status: 302, responseText: "" });
+    await expect(redirectFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json())).resolves.toEqual(
+      cleanupBody({ providerError: `${CARRIER_DISPLAY_NAME} HTTP 302`, labelDeleted: true }),
+    );
+    expect(redirectFixture.fetchImpl).toHaveBeenCalledWith(
+      CLEANUP_URL,
+      expect.objectContaining({
+        redirect: "manual",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+
+    const timeoutFixture = cleanupFixture({ hangFetch: true, timeoutMs: 25 });
+    await expect(timeoutFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json())).resolves.toMatchObject(
+      cleanupBody({ providerError: expect.stringContaining("timed out"), labelDeleted: true }),
+    );
+    expect(timeoutFixture.remove).toHaveBeenCalledWith(["TRK-1.pdf"]);
+
+    const oversizedFixture = cleanupFixture({ responseText: "x".repeat(256), maxBodyBytes: 64 });
+    await expect(oversizedFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json())).resolves.toMatchObject(
+      cleanupBody({ providerError: expect.stringContaining("exceeded 64 bytes"), labelDeleted: true }),
+    );
+    expect(oversizedFixture.remove).toHaveBeenCalledWith(["TRK-1.pdf"]);
+  });
+
+  it("blocks path-traversal tracking numbers from invoking storage removal", async () => {
+    for (const unsafeTracking of ["../other/label", "nested/label", "a\\b", "bad..id", " TRK-1 "]) {
+      const fixture = cleanupFixture({ responseText: "<result>true</result>" });
+      await expect(fixture.action(request({
+        authorization: "Bearer token",
+        body: { tracking_number: unsafeTracking },
+      })).then((response) => response.json())).resolves.toEqual(
+        cleanupBody({ providerDeleted: true, labelDeleted: false }),
+      );
+      expect(fixture.remove).not.toHaveBeenCalled();
+    }
+  });
+
+  it("redacts secrets, tokens, emails, and phones from cleanup errors and logs", async () => {
+    const log = vi.fn();
+    const faultFixture = cleanupFixture({
+      responseText: "<envelope><password>topsecret</password><faultstring>Failed for user@example.com +48 500 600 700 Bearer tok_123</faultstring></envelope>",
+      log,
+    });
+    const faultBody = await faultFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json());
+    expect(faultBody.dhl_error).toBe("Failed for [redacted-email] [redacted-phone] Bearer [redacted]");
+    const logged = log.mock.calls.flat().join(" ");
+    expect(logged).not.toContain("topsecret");
+    expect(logged).not.toContain("user@example.com");
+    expect(logged).not.toContain("tok_123");
+
+    const errorFixture = cleanupFixture({
+      fetchError: new Error("auth failed token=abc123 user@example.com"),
+      log,
+    });
+    const errorBody = await errorFixture.action(request({
+      authorization: "Bearer token",
+      body: { tracking_number: "TRK-1" },
+    })).then((response) => response.json());
+    expect(errorBody.dhl_error).toBe("Error: auth failed token: [redacted] [redacted-email]");
+    expect(errorBody.dhl_error).not.toContain("abc123");
+  });
 });
 
 function cleanupAction(options: { createClient?: () => CleanupClient } = {}) {
@@ -171,22 +248,32 @@ function cleanupFixture(options: {
   authenticatedUser?: { id: string } | null;
   admin?: { id: string } | null;
   responseText?: string;
+  status?: number;
   fetchError?: Error;
+  hangFetch?: boolean;
+  timeoutMs?: number;
+  maxBodyBytes?: number;
   removeError?: { message: string } | null;
   removeThrow?: Error;
   username?: string;
   password?: string;
+  log?: (...args: unknown[]) => void;
 } = {}) {
   const events: string[] = [];
-  const fetchImpl = options.fetchError
+  const fetchImpl = options.hangFetch
     ? vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: RequestInit): Promise<Response> => {
       events.push("provider");
-      throw options.fetchError;
+      return new Promise<Response>(() => {});
     })
-    : vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: RequestInit): Promise<Response> => {
-      events.push("provider");
-      return new Response(options.responseText ?? "<result>true</result>");
-    });
+    : options.fetchError
+      ? vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: RequestInit): Promise<Response> => {
+        events.push("provider");
+        throw options.fetchError;
+      })
+      : vi.fn(async (_input: Parameters<typeof fetch>[0], _init?: RequestInit): Promise<Response> => {
+        events.push("provider");
+        return new Response(options.responseText ?? "<result>true</result>", { status: options.status ?? 200 });
+      });
   const remove = vi.fn(async () => {
     events.push("storage");
     if (options.removeThrow) throw options.removeThrow;
@@ -215,6 +302,9 @@ function cleanupFixture(options: {
       fetchImpl: fetchImpl as never,
       username: options.username ?? "user",
       password: options.password ?? "pass",
+      log: options.log,
+      timeoutMs: options.timeoutMs,
+      maxBodyBytes: options.maxBodyBytes,
     }),
     clientFactory,
     fetchImpl,

@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { assertReleaseProvenance, assertSbomPackages, auditInstalledRelease, buildQualifiedImage, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import { assertReleaseProvenance, assertSbomPackages, auditInstalledRelease, buildQualifiedImage, prepareReleasedStarter, prepareStarterCandidate, proveNeutralStarterConsumer, qualificationReceipt, qualifyReleasedSet, verifiedReleasePackages } from "./exact-set-qualification.mjs";
+import { parsePackagesConfig } from "./package-manifest-policy.ts";
 import * as browserRunner from "../starter-browser-ci.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -238,6 +239,71 @@ console.log(answer.value ?? "");
   });
 });
 
+
+describe("candidate preparation diagnostics", () => {
+  it.each([
+    ["archive", "candidate_git_archive exit=31 reason=git_archive_failed"],
+    ["extract", "candidate_tar_extract exit=31 reason=tar_extract_failed"],
+    ["source_inputs", "candidate_inputs exit=none reason=source_input_validation_failed"],
+    ["starter_inputs", "candidate_starter_inputs exit=none reason=starter_input_preparation_failed"],
+    ["generated_lockfile", "candidate_lockfile_validation exit=none reason=generated_lockfile_validation_failed"],
+    ["extracted_lockfile", "candidate_extracted_lockfile exit=none reason=extracted_lockfile_validation_failed"],
+    ["lockfile_generation", "candidate_lockfile exit=27 reason=lockfile_generation_failed"],
+    ["dependency_install", "candidate_install exit=28 reason=npm_install_failed"],
+  ])("reports %s with fixed diagnostics", (fault, expected) => {
+    const directory = mkdtempSync(join(tmpdir(), "candidate-preparation-test-"));
+    const commit = "a".repeat(40);
+    const save = (path: string, value: unknown) => {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, JSON.stringify(value));
+    };
+    const commandError = (status: number) => Object.assign(Error("command output"), { status, stderr: "child diagnostic" });
+    try {
+      const inventory = parsePackagesConfig(readFileSync(join(ROOT, "config/openlup-packages.json"), "utf8"));
+      const manifest = join(directory, "packs", "manifest.json");
+      mkdirSync(dirname(manifest), { recursive: true });
+      const packages = inventory.packages.filter(entry => entry.publish).map(({ name, directory: source }) => {
+        const metadata = JSON.parse(readFileSync(join(ROOT, source, "package.json"), "utf8"));
+        const filename = name.slice(9) + ".tgz", bytes = Buffer.from(name);
+        writeFileSync(join(dirname(manifest), filename), bytes);
+        return { name, version: metadata.version, filename, sha256: createHash("sha256").update(bytes).digest("hex"),
+          integrity: "sha512-" + createHash("sha512").update(bytes).digest("base64") };
+      });
+      save(manifest, { schemaVersion: 2, commit, packages });
+
+      const archiveError = commandError(31);
+      const run = (file: string, args: string[], cwd = ROOT) => {
+        if (fault === "archive" && file === "git" && args[0] === "archive") throw archiveError;
+        if (fault === "extract" && file === "tar") throw commandError(31);
+        if (file === "git") return args[0] === "rev-parse" ? commit : "";
+        if (file === "tar") {
+          const source = args.at(-1)!;
+          save(join(source, "config/openlup-packages.json"), fault === "source_inputs" ? { ...inventory, packages: [null] } : inventory);
+          for (const { name, version } of packages) save(join(source, "packages", name.slice(9), "package.json"), { name, version });
+          save(join(source, "examples/neutral-store/package.json"), fault === "starter_inputs" ? null : {});
+        } else if (file === "npm" && args[0] === "install") {
+          if (fault === "lockfile_generation") throw commandError(27);
+          const entries = packages.map(({ name, version, integrity }) => [`node_modules/${name}`, { version, integrity }]);
+          save(join(cwd, "package-lock.json"), { lockfileVersion: 3, packages: fault === "generated_lockfile" ? {} : { "": {}, ...Object.fromEntries(entries) } });
+        } else if (file === process.execPath) {
+          const application = args[1]!, lockfile = args[args.indexOf("--lockfile") + 1]!;
+          save(join(application, ".starter-origin.json"), {});
+          writeFileSync(join(application, "package-lock.json"), fault === "extracted_lockfile" ? "{}" : readFileSync(lockfile, "utf8"));
+        } else if (file === "npm" && args[0] === "ci") {
+          throw commandError(28);
+        } else throw new Error("unexpected fixture command");
+        return "";
+      };
+      expect(() => prepareStarterCandidate(commit, manifest, join(directory, "candidate"), run)).toThrow(expect.objectContaining({ message: expected }));
+      if (fault === "archive") {
+        const receipt = qualificationReceipt("openlup-core-v" + packages[0]!.version, commit);
+        try { prepareReleasedStarter(receipt, directory, run, manifest); expect.unreachable(); }
+        catch (error) { expect(error).toBe(archiveError); }
+        expect(receipt).toMatchObject({ result: "FAIL", extraction: null });
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+});
 
 describe("exact published-set qualification", () => {
   const qualification = job(workflow, "exact-set-qualification");

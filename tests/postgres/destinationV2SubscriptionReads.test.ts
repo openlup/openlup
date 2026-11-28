@@ -82,9 +82,6 @@ const unlinked = ["Authorized linkage or scope is missing.", "The operation requ
   "Establish authorized linkage or use authorized support.", "Sign in to the linked account and restart selection."];
 const bindingInvalid = ["The supplied tuple is malformed.", "The operation requires an authoritative binding and sealed pins.",
   "Re-obtain authoritative evidence.", "Obtain the original owned tuple."];
-const storedBindingInvalid = ["Stored evidence failed verification.", "The stored binding and pins must match the issued evidence and scope.",
-  "Send the retained evidence to the destination owner for review.",
-  "After authorized resolution recheck retained evidence, or start a fresh selection where available."];
 const badDigest = ["The supplied digest differs from the verified digest.", "The supplied digest must identify the original document.",
   "Replay the original document and its digest.", "Replay the authentic pair."];
 function refusal(actual: unknown, code: string, field: string, [observed, cause, fix, recheck]: string[]) {
@@ -198,7 +195,7 @@ it.each(["missing", "foreign"] as const)("rejects a %s inherited binding scope a
   const before = await journeyCensus(owner);
   const decisions = await Promise.all([read(runtime, ctx), read(runtime, ctx, pins.binding), recheck(runtime, ctx, pins)]);
   expect(await journeyCensus(owner)).toStrictEqual(before);
-  for (const decision of decisions) refusal(decision, "destination_binding_invalid", "orderBindings", storedBindingInvalid);
+  for (const decision of decisions) unavailableRead(decision);
 });
 
 it("refuses forbidden keys at each raw JSON level and rejects unavailable stored projections without effects", async () => {
@@ -232,7 +229,7 @@ it("refuses forbidden keys at each raw JSON level and rejects unavailable stored
   }
   const otherCtx = await subject(), other = await inherited(otherCtx);
   await owner.query(`UPDATE ${orderBindingTable} SET selection=selection||'{"forbidden":{}}'::jsonb WHERE order_id=$1`, [other.order]);
-  refusal(await read(runtime, otherCtx), "destination_binding_invalid", "orderBindings", storedBindingInvalid);
+  unavailableRead(await read(runtime, otherCtx));
 });
 
 it("holds the borrowed parent guard and resolves fresh pointers after both acquisition orders", async () => {

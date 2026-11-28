@@ -210,6 +210,8 @@
         "packages/core/test/**",
         "packages/core/smoke/**",
         "packages/core/package-lock.json",
+        "packages/core/meta/release-index.json",
+        "packages/core/skills/**",
         "packages/core/release-gates.json",
         "packages/core/repository-policy.json",
         "packages/core/vitest.config.ts",
@@ -225,7 +227,8 @@
       "paths": [
         "packages/core/src/agent-context-cli.ts",
         "packages/core/src/agent-context-mcp.ts",
-        "packages/core/src/openlup-context.js"
+        "packages/core/src/openlup-context.js",
+        "packages/core/src/upgrade-impact.ts"
       ],
       "doc": "packages/core/README.md",
       "anchor": "#agent-context-lookup"
@@ -638,7 +641,7 @@
         "packages/platform/test/company-identity/**",
         "packages/platform/api/company-identity*.api.md"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#company-identity"
     },
     {
@@ -649,7 +652,7 @@
         "packages/platform/test/tax/**",
         "packages/platform/api/tax*.api.md"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#tax-calculation"
     },
     {
@@ -660,7 +663,7 @@
         "packages/platform/test/market-packs/**",
         "packages/platform/api/market-packs.api.md"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#market-packs"
     },
     {
@@ -678,7 +681,7 @@
       "paths": [
         "packages/platform/src/payments/**"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#payments-prepared-attempts"
     },
     {
@@ -1026,7 +1029,7 @@
       "paths": [
         "packages/platform/src/catalog/**"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#catalog"
     },
     {
@@ -1045,7 +1048,7 @@
       "paths": [
         "packages/platform/src/commerce/**"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#commerce-contracts"
     },
     {
@@ -1054,7 +1057,7 @@
       "paths": [
         "packages/platform/src/communications/**"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#communications-import"
     },
     {
@@ -1116,17 +1119,17 @@
         "packages/platform/test/storefront/**",
         "packages/platform/api/storefront*.api.md"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#storefront-continuation-contracts"
     },
     {
       "id": "platform-storefront-verification",
-      "when": "Storefront verdict and proof-file contracts and the client-build digest",
+      "when": "Storefront verdict and proof-file contracts, the client-build digest and the storefront capability list",
       "paths": [
         "packages/platform/src/lifecycle/storefront*.ts",
         "packages/platform/test/lifecycle/storefront*.test.ts"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#storefront-verdict-and-proof-file-contracts"
     },
     {
@@ -1137,7 +1140,7 @@
         "packages/platform/test/storefront/testing/**",
         "packages/platform/api/storefront-testing.api.md"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#storefront-test-support-entry"
     },
     {
@@ -1155,7 +1158,7 @@
       "paths": [
         "packages/platform/src/inventory/**"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#inventory"
     },
     {
@@ -1201,7 +1204,7 @@
       "paths": [
         "packages/platform/src/pricing/**"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#pricing"
     },
     {
@@ -1210,7 +1213,7 @@
       "paths": [
         "packages/platform/src/promotions/**"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#promotions"
     },
     {
@@ -1219,7 +1222,7 @@
       "paths": [
         "packages/platform/src/shipping/**"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#shipping"
     },
     {
@@ -1256,8 +1259,8 @@
       "paths": [
         "packages/core/src/testing.ts"
       ],
-      "doc": "packages/core/README.md",
-      "anchor": "#local-verification-from-source"
+      "doc": "docs/platform/DEVELOPMENT_AND_RELEASE.md",
+      "anchor": "#core-local-verification-from-source"
     },
     {
       "id": "ui-package",
@@ -1407,7 +1410,7 @@
         "packages/platform/api/channels-contracts.api.md",
         "packages/platform/api/channels-server.api.md"
       ],
-      "doc": "packages/platform/README.md",
+      "doc": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "anchor": "#channels"
     },
     {

@@ -1,6 +1,6 @@
 import { createPostgresPurchaseReservationPort } from "@openlup/platform/inventory";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { Pool } from "pg";
 import * as renewal from "@openlup/platform/subscriptions";
@@ -10,8 +10,13 @@ import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payment
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { renewalUpgradeCohort, tablesForRenewalUpgradeCohort } from "../../server/adapters/postgres/connectedStoreDomains/subscriptions.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { captureStoreJourney, storeJourneyResources, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
+import { withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
+import { readPlatformMigrationManifest, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { nativePrivacyContributors } from "../../server/runtime/auth/privacyBinding.js";
 import {
   bindDestinationOrder,
@@ -43,8 +48,10 @@ import {
   paymentPort,
   restoreInstallation,
   selection,
+  transferredPrivacy,
   type Installation,
 } from "./connectedStoreTransfer.fixture.js";
+import { bind, bookCycle, edit, insertLocalAttempt, ownerTransaction, prepareGraph, subject } from "./renewalOrderDestinationV2.fixture.js";
 
 // destinationDocumentFixture.snapshot() uses withCatalogAdmissionFence (pg_current_snapshot()),
 // so keep this suite on its own isolated per-suite template container instead of the shared broker.
@@ -672,3 +679,225 @@ try {
     expect((await restore(carried)).replayed).toBe(true);
   }, 90_000);
 });
+
+it("exports class markers for restored cross-client destination links and preserves predecessor exports and grants", async () => {
+  const manifest = JSON.parse(await readFile("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+  if (manifest.schemaVersion !== 3) throw new Error("Three platform catalogue plans required");
+  const registry = readReviewedForwardRegistry(await readFile("config/reviewed-platform-forwards.json"));
+  const path = registry.nativeStoreForwardClass?.slots.find(slot => slot.row === "commerce-destination-v2-export-ownership")?.path;
+  if (!path) throw new Error("Destination export forward is missing from the reviewed registry");
+  const candidate = selectPlatformMigrationManifest(manifest, "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
+  const prefix = structuredClone(manifest);
+  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+    const end = plan.forward.findIndex(unit => unit.file === path);
+    if (end < 1) throw new Error(`Missing predecessor for ${path} in the platform catalogue plan`);
+    plan.forward.splice(end);
+  }
+  await withPlatformCatalog(prefix, async root => {
+    const predecessor = storeJourneyResources({ catalogueRoot: root });
+    try {
+      const templates = await predecessor.targetTemplate("destination-export-predecessor");
+      const measured = readPlatformMigrationManifest(root) as PlatformMigrationManifest;
+      if (measured.schemaVersion !== 3) throw new Error("Three measured platform catalogue plans required");
+      const catalogueId = measured.qualified.objectInventorySha256.separateMigrator.withRestore;
+      const source = await templates.clone("source"), restored = await templates.clone("target");
+      const db = source.owner;
+      const [mixed, foreign, consistent] = await Promise.all(Array.from({ length: 3 }, () => destinationContext(db)));
+      const actor = { principalId: randomUUID() };
+      await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'export-review@example.invalid')", [actor.principalId]);
+      await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',now())", [actor.principalId]);
+      const selections = "public.subscription_destination_v2_selections";
+      const bindOrder = async (ctx: typeof mixed, issued: Awaited<ReturnType<typeof snapshot>>, service: unknown = testServicePin) => {
+        const orderId = await insertDestinationOrder(db, ctx);
+        await db.query(`INSERT INTO ${orderBindingTable}(order_id,snapshot_ref,selection,service) VALUES($1,$2,$3,$4)`,
+          [orderId, issued.binding.snapshotRef, service === null ? null : issued.selection, service]);
+        return orderId;
+      };
+      const selectSubscription = async (ctx: typeof mixed, issued: Awaited<ReturnType<typeof snapshot>>, service: unknown = testServicePin) => {
+        await db.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status) VALUES($1,$2,28,clock_timestamp()+interval '28 days','active')",
+          [ctx.scopeRef, ctx.clientId]);
+        await db.query(`INSERT INTO ${selections}(subscription_id,snapshot_ref,selection_revision,service) VALUES($1,$2,$3,$4)`,
+          [ctx.scopeRef, issued.binding.snapshotRef, service === null ? null : issued.selection.selectionRevision, service]);
+      };
+      const issue = (ctx: typeof mixed) => snapshot(source.runtime, ctx);
+      const erased = async (ctx: typeof mixed) => {
+        const issued = await issue(ctx);
+        await db.query("SELECT public.commerce_destination_v2_erase($1)", [ctx.clientId]);
+        return issued;
+      };
+      const foreignErased = await erased(foreign), foreignExpired = await issue(foreign);
+      await reachDestinationCutoff(db, foreignExpired.binding);
+      expect((await db.query("SELECT public.commerce_destination_v2_expire(clock_timestamp(),1000) AS count")).rows).toEqual([{ count: 1 }]);
+      const foreignLive = await issue(foreign);
+      const orderClass = "orderBindings", subscriptionClass = "subscriptionSelections";
+      const verification = (field: string) => ({ status: "failed", code: "destination_binding_invalid", field });
+      const marker = (field: string) => ({ verification: verification(field) });
+      const isolated: { id: string; field: string }[] = [];
+      for (const [document, service] of [[foreignLive, testServicePin], [foreignErased, null], [foreignExpired, testServicePin]] as const) {
+        const orderSubject = await destinationContext(db), subscriptionSubject = await destinationContext(db);
+        await bindOrder(orderSubject, document, service);
+        await selectSubscription(subscriptionSubject, document, service);
+        isolated.push({ id: orderSubject.clientId, field: orderClass }, { id: subscriptionSubject.clientId, field: subscriptionClass });
+      }
+      for (const document of [foreignLive, foreignExpired]) {
+        await bindOrder(mixed, document);
+        await selectSubscription({ ...mixed, scopeRef: randomUUID() }, document);
+      }
+      const failed = await issue(mixed), verified = await issue(mixed);
+      await db.query(`UPDATE ${documentTable} SET document_text=document_text||' ' WHERE snapshot_ref=$1`, [failed.binding.snapshotRef]);
+      for (const document of [failed, verified]) {
+        await bindOrder(mixed, document, {});
+        await selectSubscription({ ...mixed, scopeRef: randomUUID() }, document, {});
+      }
+
+      const ownErased = await erased(consistent);
+      await bindOrder(consistent, ownErased, null);
+      await selectSubscription({ ...consistent, scopeRef: randomUUID() }, ownErased, null);
+      const checkout = await issue(consistent), checkoutOrder = await bindOrder(consistent, checkout);
+      const renewalContext = { ...consistent, scopeRef: randomUUID() }, renewalDocument = await issue(renewalContext);
+      await db.query(`DELETE FROM ${selectionTable} WHERE scope_ref=$1`, [renewalContext.scopeRef]);
+      await db.query(`UPDATE ${documentTable} SET purpose=NULL,evidence_expires_at=issued_at WHERE snapshot_ref=$1`, [renewalDocument.binding.snapshotRef]);
+      await selectSubscription(renewalContext, renewalDocument);
+      const renewalOrder = await bindOrder(renewalContext, renewalDocument);
+      await db.query(`WITH cycle AS (
+        INSERT INTO public.subscription_cycles(subscription_id,scheduled_at)
+        SELECT id,next_cycle_at FROM public.subscriptions WHERE id=$1 RETURNING id
+      ) UPDATE public.commerce_orders SET subscription_cycle_id=cycle.id FROM cycle WHERE commerce_orders.id=$2`,
+      [renewalContext.scopeRef, renewalOrder]);
+      const empty = await receiptClient(db);
+
+      const bindRenewal = async () => {
+        const fixture = await subject(source);
+        const { ctx, ny, pair } = fixture;
+        const selected = await edit(db, ctx, ny.selectionRevision);
+        expect(selected.outcome).toBe("applied_from_next_parcel");
+        const cycle = await bookCycle(db, fixture);
+        const order = await ownerTransaction(db, async connection => {
+          const prepared = await prepareGraph(connection, fixture, selected, cycle);
+          expect(await bind(connection, ctx, prepared.order, selected)).toEqual(selected.binding);
+          await insertLocalAttempt(connection, fixture, prepared);
+          return prepared.order;
+        });
+        return { ctx, binding: selected.binding, cycleKey: pair.cycle_key, order };
+      };
+      const withheldRenewal = await bindRenewal(), crossClientRenewal = await bindRenewal();
+      const crossClientOrderOwner = await receiptClient(db);
+      expect(await readSnapshot(db, withheldRenewal.ctx, withheldRenewal.binding, withheldRenewal.order, "order"))
+        .toMatchObject({ binding: withheldRenewal.binding, documentPurpose: "subscription" });
+      await db.query(`UPDATE public.subscription_cycle_tax_bindings
+        SET live_evidence=jsonb_set(live_evidence,'{service,adapterRevision}','"different"') WHERE cycle_key=$1`,
+      [withheldRenewal.cycleKey]);
+      // Model restored ownership drift after the writer has pinned the renewal to its subscription document.
+      await db.query("UPDATE public.commerce_orders SET client_id=$1 WHERE id=$2", [crossClientOrderOwner, crossClientRenewal.order]);
+      isolated.push({ id: crossClientOrderOwner, field: orderClass });
+
+      const ledger = async (owner: Pool) => (await owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
+      const prefixLedger = [prefix.qualified.baseline, ...prefix.qualified.forward]
+        .map(({ file, sha256 }, position) => ({ catalog_path: file, sha256, position }));
+      expect(await ledger(source.owner)).toEqual(prefixLedger);
+      expect(await ledger(restored.owner)).toEqual(prefixLedger);
+      const packet = await captureStoreJourney(source.owner, "destination-export-source", { catalogueId });
+      const freshTarget = await captureStoreJourney(restored.owner, "destination-export-target", { catalogueId });
+      expect([packet.compatible.catalogueId, freshTarget.compatible.catalogueId]).toEqual([catalogueId, catalogueId]);
+      const repositoryRoot = process.cwd();
+      const cwd = vi.spyOn(process, "cwd").mockReturnValue(root);
+      try {
+        expect(await restoreConnectedNativeStore({ owner: restored.owner, installation: journeySelection, packet, freshTarget }))
+          .toMatchObject({ replayed: false, captureSha256: packet.sha256 });
+      } finally { cwd.mockRestore(); }
+      expect(await ledger(restored.owner)).toEqual(prefixLedger);
+      const predecessorTables = tablesForRenewalUpgradeCohort(connectedNativeStoreTables,
+        prefix.qualified.forward.some(unit => renewalUpgradeCohort.forward.test(unit.file)));
+      const retained = await census(restored.owner, predecessorTables);
+      for (const table of [documentTable, orderBindingTable, selections]) {
+        const name = table.slice("public.".length);
+        expect(retained[name]).toEqual([...packet.owned.find(entry => entry.table === name)!.rows].sort());
+      }
+
+      const cases = [
+        ...isolated.map(({ id, field }) => ({ id, fields: [field] })),
+        { id: mixed.clientId, fields: [orderClass, subscriptionClass] },
+        ...[foreign.clientId, consistent.clientId, empty, withheldRenewal.ctx.clientId].map(id => ({ id, fields: [] })),
+      ];
+      const observe = async () => {
+        const reader = await restored.runtime.connect();
+        try {
+          await reader.query("BEGIN READ ONLY");
+          const { rows: [acl] } = await reader.query(`SELECT
+            pg_get_function_identity_arguments(p.oid) AS arguments, pg_get_function_result(p.oid) AS result,
+            l.lanname AS language, p.provolatile, p.prosecdef, p.proconfig, pg_get_userbyid(p.proowner) AS owner, p.proacl::text AS acl,
+            NOT EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) WHERE grantee=0) AS private,
+            ARRAY(SELECT r.rolname::text FROM pg_roles r WHERE has_function_privilege(r.oid,p.oid,'EXECUTE') ORDER BY r.rolname) AS roles,
+            session_user AS login, has_function_privilege(p.oid,'EXECUTE') AS allowed
+            FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang WHERE p.oid='public.commerce_destination_v2_export(uuid)'::regprocedure`);
+          expect(acl).toMatchObject({ arguments: "p_client_id uuid", result: "jsonb", language: "plpgsql",
+            provolatile: "s", prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"],
+            private: true, login: journeySelection.runtimeLogin, allowed: true });
+          expect(acl.roles.filter((role: string) => ["anon", "authenticated", "service_role"].includes(role))).toEqual(["service_role"]);
+          const { rows } = await reader.query<{ id: string; bytes: string }>(`SELECT id, public.commerce_destination_v2_export(id)::text AS bytes
+            FROM unnest($1::uuid[]) WITH ORDINALITY AS subjects(id,ordinal) ORDER BY ordinal`, [cases.map(({ id }) => id)]);
+          const privacy = transferredPrivacy(restored);
+          return { acl, exports: await Promise.all(rows.map(async ({ id, bytes }) => {
+            const result = await privacy.export(actor, { kind: "contact", contactId: id });
+            const contributor = result.documents.find(document => document.contributorId === "destination-documents")!;
+            expect(contributor.data).toEqual(JSON.parse(bytes));
+            return { bytes, contributor };
+          })) };
+        } finally { await reader.query("ROLLBACK"); reader.release(); }
+      };
+      const before = await observe();
+      const [{ contributor: mixedBefore }, { contributor: foreignBefore }, { contributor: consistentBefore }, emptyBefore] = before.exports.slice(isolated.length);
+      expect(mixedBefore!.data).toEqual(expect.arrayContaining([
+        { snapshotRef: failed.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "available",
+          verification: { status: "failed", code: "destination_digest_mismatch", field: "documentDigest" } },
+        expect.objectContaining({ snapshotRef: verified.binding.snapshotRef, document: expect.any(Object), verification: verification(orderClass) }),
+      ]));
+      expect(foreignBefore).toMatchObject({ coverage: { complete: false }, data: expect.arrayContaining([
+        expect.objectContaining({ snapshotRef: foreignLive.binding.snapshotRef, document: expect.any(Object), verification: verification(orderClass) }),
+        { snapshotRef: foreignErased.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "erased" },
+      ]) });
+      expect(consistentBefore).toMatchObject({ coverage: { complete: true, unavailable: [] }, data: expect.arrayContaining([
+        expect.objectContaining({ snapshotRef: checkout.binding.snapshotRef, orderBindings: [{ orderId: checkoutOrder, selection: checkout.selection, service: testServicePin }] }),
+        expect.objectContaining({ snapshotRef: renewalDocument.binding.snapshotRef,
+          document: expect.any(Object),
+          orderBindings: [{ orderId: renewalOrder, selection: renewalDocument.selection, service: testServicePin }],
+          subscriptionSelections: [{ subscriptionId: renewalContext.scopeRef, selectionRevision: renewalDocument.selection.selectionRevision, service: testServicePin }] }),
+        { snapshotRef: ownErased.binding.snapshotRef, issuedAt: expect.any(String), evidenceDisposition: "erased" },
+      ]) });
+      expect(emptyBefore).toMatchObject({ bytes: "[]", contributor: { data: [], coverage: { complete: true, unavailable: [] } } });
+
+      const runner = createPostgresMigrationRunner({ connectionString: restored.ownerUrl },
+        { root: repositoryRoot, installation: journeySelection, poolFactory: () => restored.owner });
+      expect(await runner.apply()).toEqual({ applied: candidate.forward.slice(prefix.qualified.forward.length).map(unit => unit.file) });
+      expect((await runner.status()).pending).toEqual([]);
+      const after = await observe();
+      expect(after.acl).toEqual(before.acl);
+      expect(await readSnapshot(restored.runtime, withheldRenewal.ctx, withheldRenewal.binding, withheldRenewal.order, "order"))
+        .toMatchObject({ code: "destination_binding_invalid", field: orderClass });
+      const withheldExport = JSON.parse(after.exports.at(-1)!.bytes) as { snapshotRef?: string }[];
+      const renewalRow = withheldExport.find(row => row.snapshotRef === withheldRenewal.binding.snapshotRef);
+      expect(renewalRow).toMatchObject({ document: expect.any(Object), verification: verification(orderClass) });
+      expect(renewalRow).not.toHaveProperty(orderClass);
+      expect(withheldExport.filter(row => !row.snapshotRef)).toEqual([]);
+      for (const [index, { id, fields }] of cases.entries()) {
+        const old = before.exports[index]!, next = after.exports[index]!;
+        if (id === consistent.clientId) {
+          const data = JSON.parse(old.bytes) as { snapshotRef: string; orderBindings?: unknown; verification?: unknown }[];
+          const lineageLess = data.find(row => row.snapshotRef === renewalDocument.binding.snapshotRef)!;
+          delete lineageLess.orderBindings;
+          lineageLess.verification = verification(orderClass);
+          expect(next.contributor).toEqual({ ...old.contributor, data,
+            coverage: { ...old.contributor.coverage, complete: false, unavailable: [expect.stringContaining("destination owner")] } });
+          continue;
+        }
+        if (!fields.length) { expect(next).toEqual(old); continue; }
+        if (index < isolated.length) expect(old).toMatchObject({ bytes: "[]", contributor: { coverage: { complete: true } } });
+        expect(next.contributor, `destination markers for order or subscription owner ${id}`).toEqual({ ...old.contributor, data: [...JSON.parse(old.bytes), ...fields.map(marker)],
+          coverage: { ...old.contributor.coverage, complete: false, unavailable: [
+            "Review withheld destination evidence with the destination owner. After cutoff, run commerce_destination_v2_expire for unbound documents and export again.",
+          ] } });
+      }
+      expect(await census(restored.owner, predecessorTables)).toEqual(retained);
+    } finally { await predecessor.close(); }
+  });
+}, 120_000);

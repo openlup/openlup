@@ -308,7 +308,7 @@ it("inherits the exact order pin and races real renewal prepare with no parcel, 
   expect(await current(owner, ctx)).toEqual({ binding: origin.binding, selectionRevision: origin.selection.selectionRevision, service: testServicePin });
   const noSelection = () => edit(owner, ctx, command(ctx, { expectedTemplateVersion: version }));
   await owner.query(`UPDATE ${orderBindingTable} SET service=service||'{"forbidden":true}'::jsonb WHERE order_id=$1`, [purchase.orderId]);
-  refused(await noSelection(), "destination_binding_invalid", "orderBindings");
+  refused(await noSelection(), "destination_evidence_unavailable", "subscriptionId");
   await owner.query(`UPDATE ${orderBindingTable} SET selection=NULL,service=NULL WHERE order_id=$1`, [purchase.orderId]);
   refused(await noSelection(), "destination_evidence_unavailable", "subscriptionId");
   await owner.query(`UPDATE ${orderBindingTable} SET selection=$2,service=$3 WHERE order_id=$1`, [purchase.orderId, origin.selection, testServicePin]);
@@ -317,7 +317,7 @@ it("inherits the exact order pin and races real renewal prepare with no parcel, 
     (order_id,client_id,subscription_id,cadence_days,state,payment_fingerprint,activation_idempotency_key,declare_idempotency_key,activated_at)
     VALUES($1,$2,$3,28,'active',repeat('a',64),$4,$5,clock_timestamp())`,
   [duplicate, ctx.clientId, ctx.scopeRef, randomUUID(), randomUUID()]);
-  refused(await noSelection(), "destination_binding_invalid", "destination");
+  refused(await noSelection(), "destination_evidence_unavailable", "subscriptionId");
   await owner.query("DELETE FROM public.commerce_orders WHERE id=$1", [duplicate]);
   refused(await noSelection(), "destination_version_changed", "expectedSelectionRevision");
   function incumbentRows(rows: Awaited<ReturnType<typeof journeyCensus>>) {
