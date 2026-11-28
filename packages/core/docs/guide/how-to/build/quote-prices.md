@@ -256,34 +256,49 @@ export function bindNativeQuotes({ runtime, ...bindings }) {
   });
 }
 
+function plainData(value) {
+  if (value === null || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (Array.isArray(value) ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) return false;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  return Reflect.ownKeys(descriptors).every(key => Object.hasOwn(descriptors[key], "value"));
+}
+
 export function withPublishedTaxClasses(runtime, readFacts) {
   return async (owner, request, document) => {
     const { facts: hostFacts, skuIdsByCode } = await readFacts(owner, request, document);
+    if (!plainData(hostFacts) || !plainData(hostFacts.planInput)) return hostFacts;
     const { planInput } = hostFacts;
     if ((planInput.listBasis ?? "inclusive") !== "exclusive") return hostFacts;
+    const { lines: hostLines } = planInput;
+    if (!Array.isArray(hostLines) || !plainData(hostLines) || !hostLines.every(plainData)) return hostFacts;
 
-    const facts = { ...hostFacts, planInput: { ...planInput, lines: planInput.lines.map(line => ({ ...line })) } };
+    const { catalogueEvidenceRef } = hostFacts;
+    const capturedLines = hostLines.map(line => ({ ...line }));
     const pairs = new Map();
-    for (const { sku } of facts.planInput.lines) {
+    for (const { sku } of capturedLines) {
       const skuId = skuIdsByCode.get(sku);
       pairs.set(JSON.stringify([skuId, sku]), { skuId, sku });
     }
     const { assignments } = await readPublishedSkuTaxAssignments(runtime, {
       expectedSelectionDigest: null, skus: [...pairs.values()],
     });
+    if (!plainData(hostFacts) || !plainData(hostFacts.planInput)) return hostFacts;
     const bySku = new Map(assignments.map(row => [row.sku, row]));
-    const lines = facts.planInput.lines.map(line => {
+    const lines = capturedLines.map(line => {
       const { taxClassKey, assignmentRef } = bySku.get(line.sku);
       return { ...line, taxClassKey, assignmentRef };
     });
-    return { ...facts, planInput: { ...facts.planInput, lines } };
+    return { ...hostFacts, catalogueEvidenceRef, planInput: { ...hostFacts.planInput, lines } };
   };
 }
 ```
 
-The wrapper captures the SKU set and top-level catalogue evidence before reading
-the assignments. The host is responsible for in-place changes to money evidence
-such as `price`, just as on the direct quote path.
+The wrapper binds the SKU set, the merchandise lines it assigns, and the
+top-level `catalogueEvidenceRef` before reading the assignments. The port reads
+all other fields, including `price` and its `classMapRevision`, from the host's
+current facts. The wrapper passes non-plain fact objects through unchanged so
+the port applies the same admission rules as on the direct quote path.
 
 On the exclusive route, pass `withPublishedTaxClasses(runtime, readFacts)` as
 `readPlan`. Return the plan `facts` and a `skuIdsByCode` map from the host's
